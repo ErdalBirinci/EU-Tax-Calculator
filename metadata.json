@@ -1,0 +1,5 @@
+{
+  "name": "EU Tax Calculator",
+  "description": "Calculate gross to net salary across all European Union countries with detailed tax breakdowns.",
+  "requestFramePermissions": []
+}
