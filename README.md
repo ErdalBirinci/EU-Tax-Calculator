@@ -1,123 +1,123 @@
-# EU Tax Calculator — Avrupa'da Gerçek Net Maaşını Bil
+# EU Tax Calculator — Know Your True Net Salary Anywhere in Europe
 
-27 AB ülkesinde brütten nete maaş hesaplama uygulaması. Resmi 2025/2026 vergi dilimleri, sosyal güvenlik kesintileri, expat vergi rejimleri, yaşam maliyeti ve vize rehberliği — **tamamı çevrimdışı**, kayıt yok, API anahtarı yok.
+Gross-to-net salary calculator across all 27 EU countries. Official 2025/2026 tax brackets, social security contributions, expat tax regimes, cost of living and visa guidance — **fully offline**, no sign-up, no API keys.
 
-**Canlı demo:** https://erdalbirinci.github.io/EU-Tax-Calculator/
+**Live demo:** https://erdalbirinci.github.io/EU-Tax-Calculator/
 
-![Hero ve hızlı deneme](docs/screenshots/01-hero.png)
+![Hero and quick try-out](docs/screenshots/01-hero.png)
 
-## Özellikler
+## Features
 
-### Hesaplayıcı
-- **27 AB ülkesi**, resmi 2025/2026 gelir vergisi dilimleri + çalışan sosyal güvenlik oranları
-- **Brüt → Net ve Net → Brüt** (hedef nete göre gerekli brütü bulan çözücü)
-- Medeni durum, çocuk sayısı, şehir, 12/13/14 maaş seçeneği
-- **Ülkeye özel vergi mantığı:** Fransa quotient familial (1.807 € tavanlı), Almanya eş bölüşümü (Ehegattensplitting), Avusturya %6 sabit bonus vergisi
-- **Expat rejimleri:** Hollanda 30% ruling, İspanya Beckham Law, İtalya impatriati, Fransa impatriate, Portekiz IFIC, İrlanda SARP, İsveç uzman indirimi, Danimarka araştırmacı tarifesi, Finlandiya kilit personel, Malta HQP, Kıbrıs/GYunanistan muafiyetleri — standart vs. rejimli vergi yan yana
-- İşveren maliyeti, satın alma gücü paritesi (PPP), EU Blue Card uygunluk kontrolü, emeklilik projeksiyonu
+### Calculator
+- **27 EU countries** with official 2025/2026 income tax brackets + employee social security rates
+- **Gross → Net and Net → Gross** (a solver that finds the gross needed for a target net)
+- Marital status, number of children, city, 12/13/14 salary payments
+- **Country-specific tax logic:** France quotient familial (€1,807 cap), Germany spouse splitting (Ehegattensplitting), Austria flat 6% bonus tax
+- **Expat regimes:** Dutch 30% ruling, Spain Beckham Law, Italy impatriati, France inbound regime, Portugal IFIC, Ireland SARP, Swedish expert relief, Danish researcher scheme, Finnish key personnel, Malta HQP, Cyprus/Greece exemptions — standard vs. regime tax side by side
+- Employer cost, purchasing power parity (PPP), EU Blue Card eligibility check, pension projection
 
-![Hesaplama sonucu](docs/screenshots/03-results.png)
+![Calculation result](docs/screenshots/03-results.png)
 
-### Karşılaştırma ve harita
-- **27 ülke karşılaştırma grafiği:** tek brütle tüm AB'de net maaş sıralaması (EUR normalize); bara tıklayınca o ülke hesaplanır
-- **Vergi ısı haritası:** efektif üst dilim oranlarına göre renklendirilmiş çevrimdışı SVG Avrupa haritası (d3-geo, gömülü sınır verisi)
-- Ülke seçimde mini bilgi kartı: üst dilim, sosyal oran, 60.000 € örneği
+### Comparison and map
+- **27-country comparison chart:** net pay ranking across the EU for a single gross (EUR-normalized); click a bar to calculate that country
+- **Tax heatmap:** offline SVG map of Europe (d3-geo, embedded boundary data) colored by effective top-bracket rates
+- Mini info card on country select: top rate, social rate, €60,000 example
 
-![27 ülke karşılaştırma](docs/screenshots/02-comparison.png)
-![Harita ve form](docs/screenshots/04-map-guides.png)
+![27-country comparison](docs/screenshots/02-comparison.png)
+![Map and form](docs/screenshots/04-map-guides.png)
 
-### Sonuç zenginleştirme (tamamı yerel)
-Hesap sonrası; yaşam maliyeti dökümü, harcanabilir gelir, vergi optimizasyon ipuçları, yaşam tarzı skoru, göçmen indeksi, vize rehberliği, sosyal haklar özeti, emeklilik görünümü, ülke karşılaştırma tablosu, vergi akış (Sankey) grafiği, B2B alternatif tahmini.
+### Result enrichment (all local)
+After each calculation: cost-of-living breakdown, disposable income, tax optimization tips, lifestyle score, nomad index, visa guidance, social rights summary, pension outlook, country comparison table, tax flow (Sankey) chart, B2B alternative estimate.
 
-### Paylaşım ve dışa aktarma
-- Sonuçlu paylaşım linki (kopyala), e-posta raporu, özet kopyalama
-- **PDF raporu** (tek tıkla A4 çıktı), yazdırma dostu CSS
-- Kayıtlı senaryolar (3'e kadar yan yana kıyas), geçmiş (10 kayıt) + **CSV dışa aktarma**
-- 27 ülke vergi rehberi sayfaları (`#/guide/ülke-adı`), 27 resmi vergi dairesi linki
-- 6 dil (EN/DE/FR/IT/ES/TR), karanlık mod, klavye erişilebilirliği
+### Sharing and export
+- Shareable link with the result baked in, email report, copyable summary
+- **PDF report** (one-click A4 output), print-friendly CSS
+- Saved scenarios (compare up to 3 side by side), history (last 10) + **CSV export**
+- Per-country tax guide pages (`#/guide/country-name`), links to all 27 official tax authorities
+- 6 languages (EN/DE/FR/IT/ES/TR), dark mode, keyboard accessibility
 
-## Nasıl çalışıyor?
+## How it works
 
 ```
-Kullanıcı girdisi
-  → Deterministik motor (src/data/taxRules.ts + src/services/taxEngine.ts)
-  → Yerel zenginleştirme (aynı dosya içinde, gömülü veri setlerinden)
-  → Sonuç ekranı (<100ms, çevrimdışı)
+User input
+  → Deterministic engine (src/data/taxRules.ts + src/services/taxEngine.ts)
+  → Local enrichment (same module, from embedded datasets)
+  → Result screen (<100ms, offline)
 ```
 
-- **Rakamlar** dilim tablolarından adım adım hesaplanır; aynı girdiye her zaman aynı sonuç.
-- **Yorumlar** (yaşam maliyeti, ipuçları, vize) gömülü veri setlerinden üretilir; rakamları asla değiştirmez.
-- Harici servise istek atılmaz. Eskiden kullanılan bulut yapay zekâ entegrasyonu tamamen kaldırılmıştır; proje geçmişinde `GEMINI_API_KEY` geçen dosyalar temizlendi (`.env.example`, `vite.config.ts`, `package.json`).
+- **Numbers** are computed step by step from the bracket tables; the same input always yields the same result.
+- **Commentary** (cost of living, tips, visas) is generated from built-in datasets and never changes the numbers.
+- No requests to external services. The previously used cloud-AI integration has been removed entirely; files that once referenced `GEMINI_API_KEY` were cleaned up (`.env.example`, `vite.config.ts`, `package.json`).
 
-## Vergi tabloları ve kaynaklar
+## Tax tables and sources
 
-Tablolar `src/data/taxRules.ts` içindedir; eşik/oranlar resmi kaynaklardan doğrulanmıştır (2025/2026):
+Tables live in `src/data/taxRules.ts`; thresholds/rates verified against official sources (2025/2026):
 
-| Ülke | Kaynak | Not |
+| Country | Source | Note |
 |---|---|---|
-| Almanya | BMF §32a EStG | 2026 tarifesine parçalı-doğrusal uyum (±%7) |
-| Avusturya | BMF Tarifstufen 2025 | %40 (2024'ten beri), eşikler endeksli |
-| Fransa | service-public.gouv.fr / BOFiP | 2026 baremi + quotient familial (tavan 1.807 €) |
-| İtalya | Agenzia delle Entrate | IRPEF 23/25/43 |
-| Belçika | PwC Tax Summaries (2025) | 16.320 / 28.800 / 49.840 |
-| Hollanda | Belastingdienst | Box 1: %35,82 / %37,48 / %49,5 |
-| Portekiz | State Budget 2025 | Eşikler +%4,62, oranlar %13'ten başlar |
-| İspanya | Agencia Tributaria | Eyalet+merkez birleşik yaklaşım |
-| İrlanda | Revenue | PAYE %20/%40 + USC/PRSI harmanlanmış |
-| İsveç | Skatteverket | Skiktgräns 625.800 kr (2025) |
-| Danimarka | skat.dk | AM %8 + alt/vergi %37,02 + topskat %15 (611.800 kr üstü), tavan %52,07 |
-| Litvanya | VMI | 126.533 €'ya kadar %20, üstü %32 (2025) |
-| Letonya | Maliye Bakanlığı | 2025 reformu: %25,5 / %33 (+200.000 € üstü +3 puan) |
-| Çekya | KPMG Tax Card 2025 | 1.676.052 CZK üstü %23 |
-| Slovakya | PwC | 48.441 €'ya kadar %19, üstü %25 (2025) |
-| Diğerleri | EC Taxation Trends + ulusal idareler | Footer'daki 27 resmi linkten doğrulanabilir |
+| Germany | BMF §32a EStG | Piecewise-linear fit to the 2026 formula tariff (±7%) |
+| Austria | BMF Tarifstufen 2025 | 40% (since 2024), indexed thresholds |
+| France | service-public.gouv.fr / BOFiP | 2026 barème + quotient familial (€1,807 cap) |
+| Italy | Agenzia delle Entrate | IRPEF 23/25/43 |
+| Belgium | PwC Tax Summaries (2025) | 16,320 / 28,800 / 49,840 |
+| Netherlands | Belastingdienst | Box 1: 35.82% / 37.48% / 49.5% |
+| Portugal | State Budget 2025 | Thresholds +4.62%, rates start at 13% |
+| Spain | Agencia Tributaria | Combined state + regional approach |
+| Ireland | Revenue | Blended PAYE 20%/40% + USC/PRSI |
+| Sweden | Skatteverket | Skiktgräns 625,800 kr (2025) |
+| Denmark | skat.dk | AM 8% + bottom/state 37.02% + topskat 15% (above 611,800 kr), ceiling 52.07% |
+| Lithuania | VMI | 20% up to €126,533, 32% above (2025) |
+| Latvia | Ministry of Finance | 2025 reform: 25.5% / 33% (+3 pp above €200,000) |
+| Czechia | KPMG Tax Card 2025 | 23% above 1,676,052 CZK |
+| Slovakia | PwC | 19% up to ~€48,441, 25% above (2025) |
+| Others | EC Taxation Trends + national administrations | Verifiable via the 27 official links in the footer |
 
-Otomatik doğrulama: `npm run verify-taxes` — 27 ülke × 12 gelir seviyesi × medeni durum × çocuk sayısı için muhasebe kimliği (`net + vergi + sosyal = brüt`), monotonluk, net→brüt çözücü turu ve 30+ resmi tarife noktası kontrolü. Detay: `scripts/verify-taxes.ts`.
+Automated verification: `npm run verify-taxes` — accounting identity (`net + tax + social = gross`), monotonicity, net→gross solver round-trips and 30+ official tariff spot checks across 27 countries × 12 income levels × marital status × children. Details: `scripts/verify-taxes.ts`.
 
-## Geliştirme
+## Development
 
-**Gereksinim:** Node.js 18+
-
-```bash
-npm install     # bağımlılıklar
-npm run dev     # geliştirme sunucusu (http://localhost:3000)
-npm run build   # üretim derlemesi (dist/)
-npm run lint    # tsc tip kontrolü
-npm run verify-taxes  # vergi motoru doğrulama testleri
-```
-
-**Önizleme ana makine adı:** `npm run dev` varsayılan olarak `PREVIEW_HOSTS` env değişkeninde verilen hostlara izin verir:
+**Requirements:** Node.js 18+
 
 ```bash
-PREVIEW_HOSTS="ornek.style.dev" npm run dev
+npm install     # dependencies
+npm run dev     # dev server (http://localhost:3000)
+npm run build   # production build (dist/)
+npm run lint    # tsc type check
+npm run verify-taxes  # tax engine verification tests
 ```
 
-**Yayınlama:** `main` dalına push, `.github/workflows/deploy.yml` ile GitHub Pages'e otomatik yayınlar (`base: './'` göreli yol kullanır).
+**Preview hostname:** `npm run dev` allows the hosts given in the `PREVIEW_HOSTS` env var:
 
-## Proje yapısı
+```bash
+PREVIEW_HOSTS="example.style.dev" npm run dev
+```
+
+**Publishing:** pushing to `main` auto-deploys to GitHub Pages via `.github/workflows/deploy.yml` (uses relative `base: './'`).
+
+## Project structure
 
 ```
 src/
   data/
-    taxRules.ts        # 27 ülke dilim tabloları (resmi 2025/2026)
-    marketExtras.ts    # rehber özetleri, işveren oranları, PPP, Blue Card, rejim etkileri
-    socialExtras.ts    # aile indirimi, bonus vergisi, şehir COL, vize/emeklilik verileri
+    taxRules.ts        # 27-country bracket tables (official 2025/2026)
+    marketExtras.ts    # guide blurbs, employer rates, PPP, Blue Card, regime effects
+    socialExtras.ts    # family relief, bonus tax, city COL, visa/pension data
     cities.ts, cityCoordinates.ts, currencies.ts, expatRegimes.ts,
-    qualityOfLife.ts, taxAuthorities.ts, europe.json  # gömülü harita
+    qualityOfLife.ts, taxAuthorities.ts, europe.json  # embedded map
   services/
-    taxEngine.ts       # deterministik motor + yerel zenginleştirme (çevrimdışı)
+    taxEngine.ts       # deterministic engine + local enrichment (offline)
   components/
-    TaxCalculator.tsx  # form + sonuç ekranı
-    CountryCompare.tsx # 27 ülke karşılaştırma grafiği
-    EuropeMap.tsx      # çevrimdışı SVG harita (d3-geo)
-    CountryGuide.tsx   # ülke rehber sayfaları
+    TaxCalculator.tsx  # form + results screen
+    CountryCompare.tsx # 27-country comparison chart
+    EuropeMap.tsx      # offline SVG map (d3-geo)
+    CountryGuide.tsx   # country guide pages
     TaxSankey.tsx, CountUp.tsx
-  i18n/                # 6 dil çevirileri
+  i18n/                # 6-language translations
 scripts/
-  verify-taxes.ts      # vergi doğrulama koşumu
-docs/screenshots/      # README görselleri
+  verify-taxes.ts      # tax verification harness
+docs/screenshots/      # README images
 ```
 
-## Sınırlılıklar
+## Limitations
 
-Tahmin aracıdır, vergi danışmanlığı değildir. Bölgesel ek vergiler (İspanya özerk bölgeleri, İtalya bölge/belediye ekleri, Belçika belediye vergisi), kilise vergisi ve kişisel kesintilerin bir kısmı modellenmez. Estonya temel muafiyeti ve Slovakya'nın 2026'da eklenen üst dilimleri yaklaşıktır. Sözleşme imzalamadan önce yerel vergi dairenizle teyit edin.
+An estimation tool, not tax advice. Regional surcharges (Spanish autonomous regions, Italian regional/municipal add-ons, Belgian municipal tax), church tax and some personal deductions are not modelled. Estonia's basic exemption and Slovakia's 2026 top brackets are approximate. Confirm with your local tax authority before signing a contract.
