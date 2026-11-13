@@ -100,6 +100,9 @@ const r2 = applyRegime(80000, 'Ireland', 'sarp', T('Ireland', 80000));
 if (r2.incomeTax !== T('Ireland', 80000)) fail('SARP wrongly applied below €100k threshold');
 const r3 = applyRegime(100000, 'Spain', 'beckham_law', T('Spain', 100000));
 approx('Beckham 100k flat 24%', r3.incomeTax, 24000, 0.001);
+const r4 = applyRegime(65000, 'Netherlands', '30_ruling', T('Netherlands', 65000));
+approx('30% ruling 65k (taxable 45.5k)', r4.incomeTax, T('Netherlands', 45500), 0.001);
+if (!(r4.savings > 0)) fail('30% ruling produced no savings');
 
 // 6. Social caps respected
 for (const c of COUNTRIES) {

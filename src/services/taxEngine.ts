@@ -278,8 +278,12 @@ export async function calculateTaxes(data: {
   }
 
   // With key → enrich the exact numbers with AI context (COL, tips, lifestyle, visa…).
+  // Never block the offline result: if enrichment stalls, fall back after 12 s.
   try {
-    const enriched = await enrichWithAI(data, base, apiKey);
+    const enriched = await Promise.race([
+      enrichWithAI(data, base, apiKey),
+      new Promise<TaxResult>((resolve) => setTimeout(() => resolve(base), 12000)),
+    ]);
     cache.set(cacheKey, enriched);
     savePersistentCache(cache);
     return enriched;

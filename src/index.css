@@ -90,8 +90,12 @@
 
 /* Print: results only */
 @media print {
-  header, section, footer, form, .no-print {
+  header, section, footer, form, .no-print, .recharts-responsive-container {
     display: none !important;
+  }
+  .motion-safe\:animate-none, * {
+    animation: none !important;
+    transition: none !important;
   }
   body {
     background: #fff;
@@ -131,6 +135,19 @@
 }
 .dark select.premium-input option { color: #0f172a; }
 .dark .prose { color: #cbd5e1 !important; }
+
+/* Recharts in dark mode */
+.dark .recharts-cartesian-axis-tick text { fill: #94a3b8 !important; }
+.dark .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #0e1c42 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 12px;
+}
+.dark .recharts-tooltip-wrapper .recharts-default-tooltip .recharts-tooltip-label,
+.dark .recharts-tooltip-wrapper .recharts-default-tooltip .recharts-tooltip-item {
+  color: #e2e8f0 !important;
+}
+.dark .recharts-bar-background rect { fill: rgba(255, 255, 255, 0.06) !important; }
 
 /* Legacy aliases kept so old components still compile */
 .glass-card {

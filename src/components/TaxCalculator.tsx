@@ -4,7 +4,9 @@ import { euCountries } from '../i18n/translations';
 import { countryCities } from '../data/cities';
 import { expatRegimes } from '../data/expatRegimes';
 import { countryCurrencies } from '../data/currencies';
-import { calculateTaxes, TaxResult, solveGrossFromNet, applyRegime, employerCost, pppAdjustedNet, blueCardCheck, TAX_RULES_VERSION } from '../services/taxEngine';
+import { calculateTaxes, TaxResult, solveGrossFromNet, deterministicNet, applyRegime, employerCost, pppAdjustedNet, blueCardCheck, TAX_RULES_VERSION } from '../services/taxEngine';
+import { TAX_RULES_2025 } from '../data/taxRules';
+import { CountryCompare } from './CountryCompare';
 import { COUNTRY_GUIDES } from '../data/marketExtras';
 import { EXPAT_DETAIL, visaNote, pensionOf, BLUE_CARD_SHORTAGE } from '../data/socialExtras';
 import { CountUp } from './CountUp';
@@ -329,7 +331,7 @@ export function TaxCalculator() {
     <div className="space-y-8">
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Map Section - Now side by side with form on large screens */}
-        <div className="lg:col-span-7 order-2 lg:order-1">
+        <div className="lg:col-span-7 order-2 lg:order-1 no-print">
           <div className="bg-white p-2 rounded-3xl shadow-sm border border-slate-200 overflow-hidden relative">
             <div className="absolute top-4 left-4 z-[1001]">
               <button
@@ -344,6 +346,20 @@ export function TaxCalculator() {
             </div>
             <EuropeMap selectedCountry={country} selectedCity={city} onSelectCountry={handleMapSelect} showHeatmap={showHeatmap} />
           </div>
+          {country && TAX_RULES_2025[country] && (() => {
+            const rule = TAX_RULES_2025[country];
+            const ex = deterministicNet(60000, country, 'single', 0);
+            const top = rule.brackets[rule.brackets.length - 1];
+            return (
+              <div className="mt-3 p-4 rounded-2xl bg-ink-950 text-white flex flex-wrap items-center gap-x-5 gap-y-1.5 no-print">
+                <span className="text-sm font-black">{country}</span>
+                <span className="text-[11px] font-bold text-white/60">Top rate <span className="text-gold-400 font-black">{Math.round(top.rate * 100)}%</span></span>
+                <span className="text-[11px] font-bold text-white/60">Social <span className="text-gold-400 font-black">{(rule.socialRate * 100).toFixed(1)}%</span></span>
+                <span className="text-[11px] font-bold text-white/60">€60k → net <span className="text-emerald-400 font-black num-tabular">{ex.net.toLocaleString()} {rule.currency}</span></span>
+                <button onClick={() => applyPreset({ country, grossSalary: 60000 })} className="ml-auto text-[11px] font-extrabold text-gold-400 hover:text-gold-300">Calculate €60k →</button>
+              </div>
+            );
+          })()}
           <div className="mt-4 flex items-center gap-3 px-4 py-3 bg-blue-50/50 rounded-2xl border border-blue-100/50">
             <Info className="w-5 h-5 text-blue-500 flex-shrink-0" />
             <p className="text-xs text-blue-700 leading-relaxed">
@@ -595,7 +611,19 @@ export function TaxCalculator() {
         </form>
         {history.length > 0 && (
           <div className="mt-5 pt-5 border-t border-slate-100">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">{t('recentCalc')}</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{t('recentCalc')}</p>
+              <div className="flex gap-2">
+                <button onClick={() => {
+                  const rows = ['country,gross,period,net,currency,date', ...history.map((h) => [h.country, h.grossSalary, h.period, h.net, h.currency, new Date(h.ts).toISOString()].join(','))];
+                  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(blob); a.download = 'eu-tax-history.csv'; a.click();
+                  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+                }} className="text-[10px] font-extrabold text-blue-600 hover:text-blue-800">Export CSV</button>
+                <button onClick={() => { setHistory([]); try { localStorage.removeItem('eutax_history'); } catch { /* ignore */ } }} className="text-[10px] font-extrabold text-red-500 hover:text-red-700">Clear</button>
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2">
               {history.slice(0, 5).map((h, i) => (
                 <button key={i} onClick={() => restoreHistory(h)} className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 border border-slate-200 text-[11px] font-bold text-slate-600 transition-all">
@@ -607,6 +635,11 @@ export function TaxCalculator() {
         )}
       </div>
     </div>
+
+      {/* All-country comparison */}
+      <div className="max-w-7xl mx-auto mt-8">
+        <CountryCompare highlight={country || undefined} onSelect={(c) => { handleMapSelect(c); document.getElementById('calculator')?.scrollIntoView({ behavior: 'smooth' }); }} />
+      </div>
 
       {/* Results Section */}
       <div className="max-w-7xl mx-auto">
@@ -722,7 +755,17 @@ export function TaxCalculator() {
                     <div className="mb-6 p-5 rounded-2xl bg-gradient-to-br from-ink-950 to-ink-800 text-white relative z-10">
                       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-400 mb-1">Expat regime — computed saving</p>
                       <p className="text-2xl font-black num-tabular">+{formatCurrency(insights.regime.savings, result.currency)} <span className="text-xs font-bold text-white/60">/ yr vs standard taxation</span></p>
-                      <p className="text-[11px] text-white/60 mt-1">{insights.regime.note}</p>
+                      <div className="mt-3 grid grid-cols-2 gap-2 max-w-md">
+                        <div className="bg-white/10 border border-white/10 rounded-xl px-3 py-2">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-white/50">Standard tax</p>
+                          <p className="text-sm font-black num-tabular">{formatCurrency(result.incomeTax, result.currency)}</p>
+                        </div>
+                        <div className="bg-gold-400/20 border border-gold-400/40 rounded-xl px-3 py-2">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-gold-400">With regime</p>
+                          <p className="text-sm font-black num-tabular text-gold-300">{formatCurrency(insights.regime.incomeTax, result.currency)}</p>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-white/60 mt-2">{insights.regime.note}</p>
                       {insights.expatDetail && (
                         <div className="mt-3 grid sm:grid-cols-3 gap-2 text-left">
                           {[['Who qualifies', insights.expatDetail.who], ['Duration', insights.expatDetail.duration], ['How to apply', insights.expatDetail.apply]].map(([h, b]) => (
@@ -861,6 +904,20 @@ export function TaxCalculator() {
                           <span className="text-xs font-bold text-green-200 uppercase tracking-wider">{t('monthly')}</span>
                           <span className="text-lg font-black text-white num-tabular">{formatCurrency(result.netSalary / 12, result.currency)}</span>
                         </div>
+                        {insights && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="inline-flex px-2.5 py-1 rounded-full bg-white/15 text-[10px] font-black text-white num-tabular">Burden {insights.burden}%</span>
+                            <span className="inline-flex px-2.5 py-1 rounded-full bg-white/15 text-[10px] font-black text-white num-tabular">Take-home {Math.round((result.netSalary / Math.max(1, result.grossSalary)) * 100)}%</span>
+                          </div>
+                        )}
+                        {insights && paymentsPerYear !== 12 && (
+                          <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] font-bold">
+                            <span className="text-green-200/70">Gross / pay</span><span className="text-right text-white num-tabular">{formatCurrency(result.grossSalary / paymentsPerYear, result.currency)}</span>
+                            <span className="text-green-200/70">Tax / pay</span><span className="text-right text-white num-tabular">{formatCurrency(result.incomeTax / paymentsPerYear, result.currency)}</span>
+                            <span className="text-green-200/70">Social / pay</span><span className="text-right text-white num-tabular">{formatCurrency(result.socialSecurity / paymentsPerYear, result.currency)}</span>
+                            <span className="text-green-200/70">Net / pay</span><span className="text-right text-gold-400 font-black num-tabular">{formatCurrency(insights.perPay, result.currency)}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -959,7 +1016,7 @@ export function TaxCalculator() {
 
                 {/* Tax Sankey Visualization */}
                 {result.taxSankeyData && result.taxSankeyData.length > 0 && (
-                  <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                  <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 no-print">
                     <h4 className="text-sm font-black text-slate-900 uppercase tracking-[0.2em] mb-8 flex items-center gap-2">
                       <Scale className="w-5 h-5 text-blue-600" />
                       {t('taxFlow')}
@@ -1132,7 +1189,7 @@ export function TaxCalculator() {
                 )}
 
                 {/* Detailed Breakdown Bar Chart */}
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 no-print">
                   <h4 className="text-sm font-black text-slate-900 uppercase tracking-[0.2em] mb-8 flex items-center gap-2">
                     <BarChart3 className="w-5 h-5 text-blue-600" />
                     Income vs Deductions

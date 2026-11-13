@@ -7,7 +7,8 @@ import { TaxCalculator } from './components/TaxCalculator';
 import { GuidesGrid, GuidePage, slugify } from './components/CountryGuide';
 import { COUNTRY_GUIDES } from './data/marketExtras';
 import { taxAuthorities } from './data/taxAuthorities';
-import { Globe, ShieldCheck, Zap, Languages, Moon, Sun } from 'lucide-react';
+import { deterministicNet } from './services/taxEngine';
+import { Globe, ShieldCheck, Zap, Languages, Moon, Sun, Calculator } from 'lucide-react';
 import { Language } from './i18n/translations';
 
 function ThemeToggle() {
@@ -72,6 +73,27 @@ function Header() {
   );
 }
 
+const DEMO_COUNTRIES = ['Germany', 'France', 'Netherlands', 'Spain', 'Italy', 'Portugal', 'Poland', 'Ireland'];
+
+function HeroDemo() {
+  const [c, setC] = React.useState('Germany');
+  const [g, setG] = React.useState<number>(60000);
+  const net = React.useMemo(() => { try { return deterministicNet(Math.max(0, g || 0), c, 'single', 0).net; } catch { return 0; } }, [c, g]);
+  return (
+    <div className="mt-7 max-w-xl rounded-2xl border border-white/12 bg-white/[0.06] backdrop-blur px-4 py-3.5 flex flex-wrap items-center gap-3">
+      <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-gold-400"><Calculator className="w-3.5 h-3.5" /> Try it</span>
+      <select value={c} onChange={(e) => setC(e.target.value)} aria-label="Demo country"
+        className="bg-white/10 border border-white/15 rounded-lg px-2.5 py-1.5 text-[13px] font-bold text-white outline-none cursor-pointer [&>option]:text-slate-900">
+        {DEMO_COUNTRIES.map((x) => <option key={x} value={x}>{x}</option>)}
+      </select>
+      <input type="number" value={g} min={0} onChange={(e) => setG(Number(e.target.value))} aria-label="Demo gross"
+        className="w-28 bg-white/10 border border-white/15 rounded-lg px-2.5 py-1.5 text-[13px] font-black text-white outline-none num-tabular" />
+      <span className="text-[13px] font-bold text-white/70">→ net <span className="text-emerald-400 font-black num-tabular">≈{net.toLocaleString()} €/yr</span></span>
+      <a href="#calculator" className="ml-auto text-[11px] font-extrabold text-gold-400 hover:text-gold-300">Details →</a>
+    </div>
+  );
+}
+
 function Hero() {
   const { t } = useLanguage();
   return (
@@ -93,6 +115,7 @@ function Hero() {
             <a href="#calculator" className="gold-btn rounded-xl px-6 py-3 text-sm">Calculate my net pay</a>
             <a href="#methodology" className="rounded-xl px-6 py-3 text-sm font-bold text-white border border-white/15 bg-white/5 hover:bg-white/10 transition-all">How it works</a>
           </div>
+          <HeroDemo />
           <dl className="grid grid-cols-3 max-w-xl gap-6 mt-10">
             {[
               ['27', 'EU countries'],
