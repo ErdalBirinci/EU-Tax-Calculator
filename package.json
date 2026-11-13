@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "verify-taxes": "node_modules/vite/node_modules/.bin/esbuild scripts/verify-taxes.ts --bundle --platform=node --format=esm --external:@google/genai --outfile=.tmp-verify/verify.mjs --log-level=warning && node .tmp-verify/verify.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

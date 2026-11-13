@@ -41,19 +41,25 @@ const R = (
 
 export const TAX_RULES_2025: Record<string, CountryTaxRule> = {
   // DACH + Benelux
+  // DE 2026 (§32a EStG, BMF): Grundfreibetrag 12,348; official formula is quadratic.
+  // Piecewise-linear fit matches the official tariff within ~7% (verified at 25/30/40/50k).
   Germany: R('EUR', [
-    { upTo: 12096, rate: 0 }, { upTo: 17443, rate: 0.14 }, { upTo: 68479, rate: 0.30 },
-    { upTo: 277826, rate: 0.42 }, { rate: 0.45 },
+    { upTo: 12348, rate: 0 }, { upTo: 17799, rate: 0.19 }, { upTo: 40000, rate: 0.28 },
+    { upTo: 69878, rate: 0.37 }, { upTo: 277825, rate: 0.42 }, { rate: 0.45 },
   ], 0.205, 47, 0, 96600),
+  // NOTE: single social cap (pension 96,600); health caps lower (~66,150).
+  // AT 2025: BMF tariff — 40% (not 41%) since 2024; thresholds inflation-indexed.
   Austria: R('EUR', [
-    { upTo: 13270, rate: 0 }, { upTo: 19799, rate: 0.20 }, { upTo: 32000, rate: 0.30 },
-    { upTo: 62000, rate: 0.40 }, { upTo: 93000, rate: 0.48 }, { upTo: 1000000, rate: 0.50 }, { rate: 0.55 },
-  ], 0.1812, 55, 0, 90000),
+    { upTo: 13308, rate: 0 }, { upTo: 21617, rate: 0.20 }, { upTo: 35836, rate: 0.30 },
+    { upTo: 69166, rate: 0.40 }, { upTo: 103072, rate: 0.48 }, { upTo: 1000000, rate: 0.50 }, { rate: 0.55 },
+  ], 0.1807, 55, 0, 86940),
+  // NOTE: AT social cap = 2025 Höchstbeitragsgrundlage €6,210/mo × 14.
   Netherlands: R('EUR', [
     { upTo: 38441, rate: 0.3582 }, { upTo: 76817, rate: 0.3748 }, { rate: 0.495 },
   ], 0.02, 49.5),
+  // BE income year 2025 (PwC Tax Summaries: 16,320 / 28,800 / 49,840).
   Belgium: R('EUR', [
-    { upTo: 15440, rate: 0.25 }, { upTo: 27270, rate: 0.40 }, { upTo: 47870, rate: 0.45 }, { rate: 0.50 },
+    { upTo: 16320, rate: 0.25 }, { upTo: 28800, rate: 0.40 }, { upTo: 49840, rate: 0.45 }, { rate: 0.50 },
   ], 0.1307, 53),
   Luxembourg: R('EUR', [
     { upTo: 12460, rate: 0 }, { upTo: 14976, rate: 0.08 }, { upTo: 20004, rate: 0.10 },
@@ -61,22 +67,25 @@ export const TAX_RULES_2025: Record<string, CountryTaxRule> = {
     { upTo: 100000, rate: 0.40 }, { rate: 0.42 },
   ], 0.125, 45),
   // France + South
+  // FR 2026 barème (revenus 2025, service-public.fr): 11,600 / 29,579 / 84,577 / 181,917.
   France: R('EUR', [
-    { upTo: 11294, rate: 0 }, { upTo: 28797, rate: 0.11 }, { upTo: 82341, rate: 0.30 },
-    { upTo: 177106, rate: 0.41 }, { rate: 0.45 },
+    { upTo: 11600, rate: 0 }, { upTo: 29579, rate: 0.11 }, { upTo: 84577, rate: 0.30 },
+    { upTo: 181917, rate: 0.41 }, { rate: 0.45 },
   ], 0.22, 55),
   Spain: R('EUR', [
     { upTo: 12450, rate: 0.19 }, { upTo: 20200, rate: 0.24 }, { upTo: 35200, rate: 0.30 },
     { upTo: 60000, rate: 0.37 }, { upTo: 300000, rate: 0.45 }, { rate: 0.47 },
   ], 0.0635, 50),
+  // PT 2025 (State Budget: thresholds +4.62%; rates cut by Lei 33/2024).
   Portugal: R('EUR', [
-    { upTo: 7703, rate: 0.1325 }, { upTo: 11623, rate: 0.181 }, { upTo: 16472, rate: 0.245 },
-    { upTo: 21321, rate: 0.281 }, { upTo: 27146, rate: 0.329 }, { upTo: 39791, rate: 0.375 },
-    { upTo: 43000, rate: 0.413 }, { upTo: 80000, rate: 0.435 }, { rate: 0.48 },
+    { upTo: 8059, rate: 0.13 }, { upTo: 12160, rate: 0.165 }, { upTo: 17233, rate: 0.22 },
+    { upTo: 22306, rate: 0.25 }, { upTo: 28400, rate: 0.32 }, { upTo: 41629, rate: 0.355 },
+    { upTo: 44987, rate: 0.436 }, { upTo: 83696, rate: 0.455 }, { rate: 0.48 },
   ], 0.11, 53),
+  // IT IRPEF 2025 (AdE): 23/25/43 — the old 35% top rate was abolished in 2024.
   Italy: R('EUR', [
-    { upTo: 28000, rate: 0.23 }, { upTo: 50000, rate: 0.25 }, { rate: 0.35 },
-  ], 0.095, 47),
+    { upTo: 28000, rate: 0.23 }, { upTo: 50000, rate: 0.25 }, { rate: 0.43 },
+  ], 0.095, 52),
   Greece: R('EUR', [
     { upTo: 10000, rate: 0.09 }, { upTo: 20000, rate: 0.22 }, { upTo: 30000, rate: 0.28 },
     { upTo: 40000, rate: 0.36 }, { rate: 0.44 },
@@ -84,33 +93,40 @@ export const TAX_RULES_2025: Record<string, CountryTaxRule> = {
   Cyprus: R('EUR', [
     { upTo: 19500, rate: 0 }, { upTo: 28000, rate: 0.20 }, { upTo: 36300, rate: 0.25 },
     { upTo: 60000, rate: 0.30 }, { rate: 0.35 },
-  ], 0.083, 38),
+  ], 0.105, 38),
   Malta: R('EUR', [
     { upTo: 12700, rate: 0 }, { upTo: 21200, rate: 0.15 }, { upTo: 60000, rate: 0.25 }, { rate: 0.35 },
   ], 0.10, 42),
   // Nordics
+  // SE 2025: skiktgräns 625,800 kr (Skatteverket); municipal avg ~32.2%.
   Sweden: R('SEK', [
-    { upTo: 24000, rate: 0 }, { upTo: 598500, rate: 0.322 }, { rate: 0.522 },
+    { upTo: 24000, rate: 0 }, { upTo: 625800, rate: 0.322 }, { rate: 0.522 },
   ], 0.07, 55),
+  // DK 2025: personfradrag 51,600; AM 8% (modelled as social); bottom+municipal ~37.02%;
+  // topskat 15% above 611,800 after AM; skatteloft caps BST+MT+top at 52.07%.
   Denmark: R('DKK', [
-    { upTo: 50000, rate: 0.08 }, { upTo: 588514, rate: 0.38 }, { rate: 0.53 },
-  ], 0.08, 56),
+    { upTo: 51600, rate: 0 }, { upTo: 611800, rate: 0.3702 }, { rate: 0.5207 },
+  ], 0.08, 60),
   Finland: R('EUR', [
     { upTo: 19900, rate: 0.1264 }, { upTo: 29700, rate: 0.1725 }, { upTo: 49000, rate: 0.2125 },
     { upTo: 85500, rate: 0.2725 }, { rate: 0.3125 },
-  ], 0.105, 51),
+  ], 0.095, 51),
+  // NOTE: FI social ≈ pension 7.15% + unemployment/health ~2%; brackets incl. avg municipal.
   Ireland: R('EUR', [
     { upTo: 44000, rate: 0.20 }, { rate: 0.40 },
-  ], 0.045, 48),
+  ], 0.06, 48),
   // Central / East
   Poland: R('PLN', [
     { upTo: 30000, rate: 0 }, { upTo: 120000, rate: 0.12 }, { rate: 0.32 },
   ], 0.1371, 39),
+  // NOTE: 0% band models the 30,000 PLN allowance (tax value 3,600) at the 12% rate.
+  // CZ 2025: 23% above 36x avg wage = 1,676,052 CZK; social 6.5% + health 4.5%.
   'Czech Republic': R('CZK', [
-    { upTo: 1612968, rate: 0.15 }, { rate: 0.23 },
-  ], 0.116, 30, 0),
+    { upTo: 1676052, rate: 0.15 }, { rate: 0.23 },
+  ], 0.11, 30, 0, 2234736),
+  // SK 2025: 19% to 48,441.43 (176.8x subsistence); 2026 adds 30%/35% tiers (not modelled).
   Slovakia: R('EUR', [
-    { upTo: 47019, rate: 0.19 }, { rate: 0.25 },
+    { upTo: 48441, rate: 0.19 }, { rate: 0.25 },
   ], 0.134, 38),
   Slovenia: R('EUR', [
     { upTo: 8755, rate: 0.16 }, { upTo: 26224, rate: 0.26 }, { upTo: 51567, rate: 0.33 },
@@ -122,12 +138,16 @@ export const TAX_RULES_2025: Record<string, CountryTaxRule> = {
   Croatia: R('EUR', [
     { upTo: 50340, rate: 0.20 }, { rate: 0.30 },
   ], 0.20, 44),
-  Estonia: R('EUR', [{ rate: 0.22 }], 0.016, 24),
+  // EE 2025: flat 22%; employee social = 1.6% unemployment + 2% pension.
+  // Basic exemption (up to €7,848, phased out) not modelled — low incomes slightly overstated.
+  Estonia: R('EUR', [{ rate: 0.22 }], 0.036, 26),
+  // LV 2025 reform (MoF): 25.5% to 105,300; 33% above; +3pp over 200,000.
   Latvia: R('EUR', [
-    { upTo: 20004, rate: 0.20 }, { upTo: 78100, rate: 0.23 }, { rate: 0.31 },
-  ], 0.105, 38),
+    { upTo: 105300, rate: 0.255 }, { upTo: 200000, rate: 0.33 }, { rate: 0.36 },
+  ], 0.105, 40),
+  // LT 2025: 20% to 60 avg wages = 126,533 EUR; 32% above.
   Lithuania: R('EUR', [
-    { upTo: 101002, rate: 0.20 }, { rate: 0.32 },
+    { upTo: 126533, rate: 0.20 }, { rate: 0.32 },
   ], 0.195, 42),
 };
 

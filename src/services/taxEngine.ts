@@ -31,6 +31,7 @@ export interface TaxResult {
 
 const getPersistentCache = () => {
   try {
+    if (typeof localStorage === 'undefined') return new Map<string, TaxResult>();
     const stored = localStorage.getItem('tax_calc_cache_v2');
     if (stored) return new Map<string, TaxResult>(JSON.parse(stored));
   } catch (e) {
@@ -41,6 +42,7 @@ const getPersistentCache = () => {
 
 const savePersistentCache = (cache: Map<string, TaxResult>) => {
   try {
+    if (typeof localStorage === 'undefined') return;
     const entries = Array.from(cache.entries()).slice(-50);
     localStorage.setItem('tax_calc_cache_v2', JSON.stringify(entries));
   } catch (e) {
@@ -123,6 +125,31 @@ function defaultTips(country: string, employmentType?: string, maritalStatus?: s
   return tips.slice(0, 3);
 }
 
+/** Income-tax-only lookup (social handled separately). */
+const incomeOnly = (c: string, g: number) => calculateDeterministic(c, g).incomeTax;
+
+/**
+ * Parts-based income tax (France quotient familial / Germany Ehegattensplitting).
+ * tax = parts × tariff(gross / parts); France caps the benefit at €1,807 per
+ * extra half-part (revenus 2025, BOFiP). Returns { tax, parts, saving }.
+ */
+function partsBasedTax(country: string, baseGross: number, baseParts: number, parts: number, capPerHalfPart?: number): { tax: number; parts: number; saving: number } {
+  const incomeOnlyC = (g: number) => calculateDeterministic(country, g).incomeTax;
+  const reference = Math.round(baseParts * incomeOnlyC(baseGross / baseParts));
+  const quotient = Math.round(parts * incomeOnlyC(baseGross / parts));
+  let saving = Math.max(0, reference - quotient);
+  if (capPerHalfPart !== undefined) saving = Math.min(saving, Math.round((parts - baseParts) * 2 * capPerHalfPart));
+  return { tax: reference - saving, parts, saving };
+}
+
+function franceParts(maritalStatus: string, children: number): { base: number; parts: number } {
+  const base = maritalStatus === 'married' ? 2 : 1;
+  const n = Math.min(Math.max(0, Math.floor(children)), 4);
+  let parts = base;
+  for (let i = 0; i < n; i++) parts += i < 2 ? 0.5 : 1;
+  return { base, parts };
+}
+
 /** Net from gross — single source of truth: country-tuned family relief + bonus-pay taxation. */
 export function deterministicNet(annualGross: number, country: string, maritalStatus: string, children: number, paymentsPerYear = 12) {
   const rule = familyRule(country);
@@ -136,16 +163,46 @@ export function deterministicNet(annualGross: number, country: string, maritalSt
     bonusTax = Math.round(bonusPart * bonus.rate);
     bonusNote = `${paymentsPerYear - 12} bonus payment(s) taxed at flat ${Math.round(bonus.rate * 100)}% (${bonus.note})`;
   }
-  const det = calculateDeterministic(country, baseGross);
+  let det = calculateDeterministic(country, baseGross);
+  // France married: show bracket rows on the 2-part base so rows + benefit line = final tax.
+  if (country === 'France' && maritalStatus === 'married') {
+    const per = calculateDeterministic(country, baseGross / 2);
+    det = { ...per, incomeTax: per.incomeTax * 2, breakdown: per.breakdown.map(r => ({ ...r, amount: Math.round(r.amount * 2) })) };
+  }
   const fullSocial = calculateDeterministic(country, annualGross).socialSecurity;
+  // France: quotient familial (parts × tariff share, €1,807 cap per extra half-part).
+  // Germany (married): Ehegattensplitting — 2 × tariff(half income).
+  let baseIncomeTax = det.incomeTax;
+  let partsNote = '';
+  if (country === 'France') {
+    const { base, parts } = franceParts(maritalStatus, children);
+    const q = partsBasedTax(country, baseGross, base, parts, 1807);
+    baseIncomeTax = q.tax;
+    if (q.saving > 0) partsNote = `Family quotient (${parts} parts) saves €${q.saving.toLocaleString()}`;
+  } else if (country === 'Germany' && maritalStatus === 'married') {
+    const q = partsBasedTax(country, baseGross, 2, 2);
+    baseIncomeTax = q.tax;
+    if (q.saving > 0) partsNote = `Joint splitting (2 × half income) saves €${q.saving.toLocaleString()}`;
+  }
   let discount = 0;
-  if (maritalStatus === 'married') discount += det.incomeTax * rule.married;
-  discount += Math.min(children, 4) * det.incomeTax * rule.perChild;
-  discount = Math.min(discount, det.incomeTax * rule.cap);
-  const incomeTax = Math.round(det.incomeTax - discount + bonusTax);
-  const breakdown = bonusTax > 0
-    ? [...det.breakdown, { bracket: 'Bonus payments (flat)', rate: `${Math.round(bonus.rate * 100)}%`, amount: bonusTax }]
-    : det.breakdown;
+  if (country !== 'France' && !(country === 'Germany' && maritalStatus === 'married')) {
+    if (maritalStatus === 'married') discount += det.incomeTax * rule.married;
+    discount += Math.min(children, 4) * det.incomeTax * rule.perChild;
+    discount = Math.min(discount, det.incomeTax * rule.cap);
+  } else if (country === 'Germany') {
+    // Splitting covers the married benefit; keep a small per-child allowance effect.
+    discount = Math.min(Math.min(children, 4) * det.incomeTax * rule.perChild, det.incomeTax * rule.cap);
+  }
+  // Relief can never exceed the tax itself (e.g. splitting + child relief at low incomes).
+  const incomeTax = Math.max(0, Math.round(baseIncomeTax - discount + bonusTax));
+  const extra: { bracket: string; rate: string; amount: number }[] = [];
+  if (partsNote) {
+    // det rows already sum to the reference tax, so rows + this line = final tax.
+    const extraSaving = Math.round(det.incomeTax - baseIncomeTax);
+    if (extraSaving > 0) extra.push({ bracket: partsNote, rate: '−', amount: -extraSaving });
+  }
+  if (bonusTax > 0) extra.push({ bracket: 'Bonus payments (flat)', rate: `${Math.round(bonus.rate * 100)}%`, amount: bonusTax });
+  const breakdown = [...det.breakdown, ...extra];
   return { incomeTax, socialSecurity: fullSocial, net: Math.round(annualGross - incomeTax - fullSocial), breakdown, bonusNote };
 }
 
@@ -170,7 +227,11 @@ export function applyRegime(annualGross: number, country: string, regimeId: stri
     const t = Math.round(annualGross * eff.flatRate);
     return { incomeTax: t, savings: Math.max(0, baseIncomeTax - t), note: eff.note };
   }
-  const reduced = calculateDeterministic(country, annualGross * (1 - eff.exemptFraction));
+  // Thresholded exemptions (SARP, Cyprus 50%): only income ABOVE the threshold is relieved.
+  const taxableBase = eff.exemptAbove !== undefined
+    ? annualGross - eff.exemptFraction * Math.max(0, annualGross - eff.exemptAbove)
+    : annualGross * (1 - eff.exemptFraction);
+  const reduced = calculateDeterministic(country, taxableBase);
   const savings = Math.max(0, baseIncomeTax - reduced.incomeTax);
   return { incomeTax: reduced.incomeTax, savings, note: eff.note };
 }
