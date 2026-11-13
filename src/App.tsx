@@ -177,12 +177,35 @@ function Footer() {
         </div>
         <div className="text-sm md:col-span-2">
           <p className="text-white font-bold text-xs uppercase tracking-[0.18em] mb-3">Official sources · all 27 EU tax authorities</p>
-          <ul className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-[12px]">
-            <li><a className="hover:text-gold-400" href="https://taxation-customs.ec.europa.eu/" target="_blank" rel="noreferrer">EU — Taxation & Customs Union</a></li>
-            {Object.entries(taxAuthorities).sort(([a], [b]) => a.localeCompare(b)).map(([c, a]) => (
-              <li key={c}><a className="hover:text-gold-400" href={a.url} target="_blank" rel="noreferrer">{c} — {a.name}</a></li>
+          <a href="https://taxation-customs.ec.europa.eu/" target="_blank" rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-full border border-gold-400/40 bg-gold-400/10 px-3.5 py-1.5 text-[12px] font-bold text-gold-300 hover:bg-gold-400/20 transition-all mb-4">
+            EU level — Taxation & Customs Union ↗
+          </a>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+            {[
+              { title: 'Western Europe', countries: ['Austria', 'Belgium', 'France', 'Germany', 'Ireland', 'Luxembourg', 'Netherlands'] },
+              { title: 'Nordics & Baltics', countries: ['Denmark', 'Estonia', 'Finland', 'Latvia', 'Lithuania', 'Sweden'] },
+              { title: 'Southern Europe', countries: ['Cyprus', 'Greece', 'Italy', 'Malta', 'Portugal', 'Spain'] },
+              { title: 'Central & Eastern Europe', countries: ['Bulgaria', 'Croatia', 'Czech Republic', 'Hungary', 'Poland', 'Romania', 'Slovakia', 'Slovenia'] },
+            ].map((region) => (
+              <div key={region.title}>
+                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-white/45 mb-2">{region.title}</p>
+                <ul className="space-y-1.5 text-[12px]">
+                  {region.countries.map((c) => {
+                    const a = taxAuthorities[c];
+                    if (!a) return null;
+                    return (
+                      <li key={c}>
+                        <a className="text-white/60 hover:text-gold-400 transition-colors" href={a.url} target="_blank" rel="noreferrer" title={a.name}>
+                          {c} <span className="text-white/30">· {a.name}</span>
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
         <div className="text-sm">
           <p className="text-white font-bold text-xs uppercase tracking-[0.18em] mb-3">Project</p>
