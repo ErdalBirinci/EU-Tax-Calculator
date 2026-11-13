@@ -376,18 +376,13 @@ export function TaxCalculator() {
 
           <div className="mt-6 flex justify-center">
             <a 
-              href="https://buymeacoffee.com/eutaxcalculator" 
+              href="https://wise.com/pay/me/erdalb143" 
               target="_blank" 
               rel="noopener noreferrer"
               className="group relative flex items-center gap-3 px-6 py-3 bg-[#FFDD00] hover:bg-[#FFDD00]/90 text-black font-bold rounded-2xl shadow-sm transition-all hover:shadow-md active:scale-95"
             >
-              <img 
-                src="https://cdn.buymeacoffee.com/buttons/bmc-new-btn-logo.svg" 
-                alt="Buy Me a Coffee" 
-                className="w-5 h-5"
-                referrerPolicy="no-referrer"
-              />
-              <span className="text-sm">Buy Me a Coffee</span>
+              <Heart className="w-5 h-5 fill-black" />
+              <span className="text-sm">Donate</span>
               <div className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full animate-bounce">
                 Support us!
               </div>

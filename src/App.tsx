@@ -210,7 +210,7 @@ function Footer() {
         <div className="text-sm">
           <p className="text-white font-bold text-xs uppercase tracking-[0.18em] mb-3">Project</p>
           <ul className="space-y-2 text-[13px]">
-            <li><a className="hover:text-gold-400" href="https://buymeacoffee.com/eutaxcalculator" target="_blank" rel="noreferrer">Support the project</a></li>
+            <li><a className="hover:text-gold-400" href="https://wise.com/pay/me/erdalb143" target="_blank" rel="noreferrer">Donate</a></li>
             <li><a className="hover:text-gold-400" href="#top">Back to top</a></li>
           </ul>
         </div>
