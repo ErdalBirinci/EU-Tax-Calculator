@@ -109,7 +109,7 @@ function Hero() {
           </h1>
           <p className="text-white/70 text-[15px] md:text-lg mt-5 max-w-2xl leading-relaxed">
             {t('subtitle')}. Instant deterministic calculation with official brackets — no waiting,
-            no sign-up. AI enrichment adds cost of living, optimization tips and visa guidance when available.
+            no sign-up. The built-in enrichment engine adds cost of living, optimization tips and visa guidance, fully offline.
           </p>
           <div className="flex flex-wrap gap-3 mt-7">
             <a href="#calculator" className="gold-btn rounded-xl px-6 py-3 text-sm">Calculate my net pay</a>
@@ -139,7 +139,7 @@ function Hero() {
 function Methodology() {
   const items = [
     { icon: Zap, title: 'Deterministic core', text: 'National 2025/2026 brackets and employee social-security rates run locally. Same input → same numbers, every time. No hallucinated rates.' },
-    { icon: Languages, title: 'AI enrichment (optional)', text: 'When a Gemini key is configured, the engine adds cost-of-living estimates, optimization tips, lifestyle and visa notes — without ever changing the computed numbers.' },
+    { icon: Languages, title: 'Local enrichment engine', text: 'Cost-of-living estimates, optimization tips, lifestyle and visa notes are generated on-device from built-in datasets — without ever changing the computed numbers.' },
     { icon: ShieldCheck, title: 'Estimate, not advice', text: 'Regional surcharges and personal deductions vary. Always confirm with your local tax authority or accountant before signing a contract.' },
   ];
   return (

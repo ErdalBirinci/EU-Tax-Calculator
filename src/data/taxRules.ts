@@ -4,7 +4,7 @@
  * IMPORTANT: These are simplified national-level approximations for instant,
  * offline calculation. Regional surcharges (Spain, Italy, Belgium communes,
  * Swiss-style church tax in DE, etc.) and special deductions are NOT fully
- * modelled. The AI layer (taxEngine) adds explanation + cost-of-living on top.
+ * modelled. The local enrichment engine (taxEngine) adds explanation + cost-of-living on top.
  * Values reviewed against EC Taxation Trends + national ministries, Nov 2026.
  *
  * All bracket thresholds are ANNUAL amounts in LOCAL currency.

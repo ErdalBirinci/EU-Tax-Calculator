@@ -18,7 +18,6 @@ import { TaxSankey } from './TaxSankey';
 import { Calculator, MapPin, Users, Baby, Loader2, AlertCircle, Briefcase, Calendar, Lightbulb, Wallet, Scale, Globe, Download, BarChart3, FileText, Sparkles, TrendingUp, ShieldCheck, CheckCircle2, Info, Home, ShoppingBag, Bus, Zap, Coffee, Utensils, Heart, Plane, Compass, Star, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import EuropeMap from './EuropeMap';
-import { AILoadingAnimation } from './AILoadingAnimation';
 import { countryQualityOfLife } from '../data/qualityOfLife';
 import { motion, AnimatePresence } from 'motion/react';
 import { Share2, Copy } from 'lucide-react';
@@ -664,7 +663,11 @@ export function TaxCalculator() {
               exit={{ opacity: 0 }}
               className="min-h-[500px] flex items-center justify-center"
             >
-              <AILoadingAnimation />
+              <div className="flex flex-col items-center justify-center p-12 bg-white rounded-2xl border border-slate-200 border-dashed min-h-[400px]">
+                <Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-4" />
+                <h3 className="text-lg font-black text-slate-900">{t('calculating')}</h3>
+                <p className="text-sm text-slate-500 font-medium mt-1">Running the offline tax engine…</p>
+              </div>
             </motion.div>
           ) : result ? (
             <motion.div 
@@ -994,7 +997,7 @@ export function TaxCalculator() {
                   </motion.div>
                 )}
 
-                {/* AI Highlights Section - Reduced text density */}
+                {/* Key highlights */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {highlights.map((highlight, idx) => (
                     <motion.div 
@@ -1096,7 +1099,7 @@ export function TaxCalculator() {
                   )}
                 </div>
 
-                {/* Visa & Residency AI */}
+                {/* Visa & Residency */}
                 {result.visaGuidance && (
                   <div className="bg-slate-900 p-8 rounded-3xl shadow-xl text-white relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-4 opacity-10">
@@ -1105,7 +1108,7 @@ export function TaxCalculator() {
                     <div className="relative z-10">
                       <h4 className="text-sm font-black uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
                         <Star className="w-5 h-5 text-yellow-400" />
-                        Visa & Residency AI
+                        Visa & Residency
                       </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
@@ -1318,7 +1321,7 @@ export function TaxCalculator() {
                 </div>
               </div>
 
-              {/* Right Column: AI Insights & Comparison */}
+                             {/* Right Column: Insights & Comparison */}
               <div className="lg:col-span-4 space-y-6">
                 {/* Cost of Living & Disposable Income */}
                 {result.costOfLiving && (
@@ -1376,12 +1379,12 @@ export function TaxCalculator() {
                   </div>
                 )}
 
-                {/* AI Optimization Tips */}
+                {/* Optimization Tips */}
                 {result.optimizationTips && result.optimizationTips.length > 0 && (
                   <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
                     <h4 className="text-sm font-black text-slate-900 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
                       <Lightbulb className="w-5 h-5 text-yellow-500" />
-                      AI Optimization
+                      {t('optimizationTips')}
                     </h4>
                     <div className="space-y-4">
                       {result.optimizationTips.map((tip, idx) => (

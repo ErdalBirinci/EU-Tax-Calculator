@@ -1,7 +1,8 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { calculateDeterministic, TAX_RULES_2025 } from "../data/taxRules";
-import { REGIME_EFFECTS, EMPLOYER_RATES, PPP_INDEX, TO_EUR, BLUE_CARD, TAX_RULES_VERSION } from "../data/marketExtras";
-import { familyRule, bonusRule, CITY_COL } from "../data/socialExtras";
+import { REGIME_EFFECTS, EMPLOYER_RATES, PPP_INDEX, TO_EUR, BLUE_CARD, TAX_RULES_VERSION, COUNTRY_GUIDES } from "../data/marketExtras";
+import { familyRule, bonusRule, CITY_COL, pensionOf, visaNote, BLUE_CARD_SHORTAGE } from "../data/socialExtras";
+import { countryQualityOfLife } from "../data/qualityOfLife";
+import { euCountries } from "../i18n/translations";
 
 export { TAX_RULES_VERSION };
 
@@ -25,14 +26,15 @@ export interface TaxResult {
   visaGuidance?: { type: string; requirements: string[]; process: string };
   nomadIndex?: { score: number; vibe: string; internetSpeed: string; nightlife: string };
   taxSankeyData?: { source: string; target: string; value: number; label: string }[];
-  /** true when numbers come from the offline deterministic engine (no AI hallucination). */
+  /** true when numbers come from the offline deterministic engine. */
   deterministic?: boolean;
 }
 
+const CACHE_KEY = 'tax_calc_cache_v3'; // bump when the result shape changes
 const getPersistentCache = () => {
   try {
     if (typeof localStorage === 'undefined') return new Map<string, TaxResult>();
-    const stored = localStorage.getItem('tax_calc_cache_v2');
+    const stored = localStorage.getItem(CACHE_KEY);
     if (stored) return new Map<string, TaxResult>(JSON.parse(stored));
   } catch (e) {
     console.error('Failed to load cache', e);
@@ -44,7 +46,7 @@ const savePersistentCache = (cache: Map<string, TaxResult>) => {
   try {
     if (typeof localStorage === 'undefined') return;
     const entries = Array.from(cache.entries()).slice(-50);
-    localStorage.setItem('tax_calc_cache_v2', JSON.stringify(entries));
+    localStorage.setItem(CACHE_KEY, JSON.stringify(entries));
   } catch (e) {
     console.error('Failed to save cache', e);
   }
@@ -267,92 +269,103 @@ export async function calculateTaxes(data: {
 
   const base = buildDeterministicResult(data);
 
-  const apiKey = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_GEMINI_API_KEY
-    ?? (typeof process !== 'undefined' ? (process as unknown as { env?: Record<string, string> }).env?.GEMINI_API_KEY : undefined);
-
-  // No key → return fast, exact offline result immediately.
-  if (!apiKey) {
-    cache.set(cacheKey, base);
-    savePersistentCache(cache);
-    return base;
-  }
-
-  // With key → enrich the exact numbers with AI context (COL, tips, lifestyle, visa…).
-  // Never block the offline result: if enrichment stalls, fall back after 12 s.
-  try {
-    const enriched = await Promise.race([
-      enrichWithAI(data, base, apiKey),
-      new Promise<TaxResult>((resolve) => setTimeout(() => resolve(base), 12000)),
-    ]);
-    cache.set(cacheKey, enriched);
-    savePersistentCache(cache);
-    return enriched;
-  } catch (e) {
-    console.warn('[TaxEngine] AI enrichment failed, using deterministic core', e);
-    cache.set(cacheKey, base);
-    savePersistentCache(cache);
-    return base;
-  }
+  // Fully offline: enrich the exact numbers with the local engine
+  // (cost of living, tips, comparison, rights, visa, nomad index).
+  // Numbers never change — enrichment is presentation only.
+  const enriched = buildLocalEnrichment(data, base);
+  cache.set(cacheKey, enriched);
+  savePersistentCache(cache);
+  return enriched;
 }
 
-async function enrichWithAI(
-  data: { country: string; city: string; grossSalary: number; period: string; language: string; expatRegime?: string; taxYear: number; currencyCode: string },
+/** Local enrichment engine — replaces the former cloud-AI layer. 100% offline. */
+function buildLocalEnrichment(
+  data: { country: string; city: string; maritalStatus: string; children: number; expatRegime?: string },
   base: TaxResult,
-  apiKey: string,
-): Promise<TaxResult> {
-  const ai = new GoogleGenAI({ apiKey });
-  const prompt = `You enrich a PRE-COMPUTED tax result. NEVER change these numbers: gross=${base.grossSalary}, incomeTax=${base.incomeTax}, social=${base.socialSecurity}, net=${base.netSalary} (${base.currency}).\nCountry=${data.country}, city=${data.city || 'capital'}, year=${data.taxYear}, language=${data.language}, expat=${data.expatRegime || 'none'}.\nReturn JSON with: explanation (markdown, ${data.language}, must state the tax-free allowance), costOfLiving {total monthly, breakdown[5]}, disposableIncome (monthly net - total), optimizationTips[3], socialRights, lifestyleMatch, visaGuidance, nomadIndex, taxSankeyData, countryComparison[10 EU, EUR net, desc].`;
+): TaxResult {
+  const { country, city } = data;
+  const q = countryQualityOfLife[country];
+  const pension = pensionOf(country);
+  const visaText = visaNote(country);
+  const regime = applyRegime(base.grossSalary, country, data.expatRegime, base.incomeTax);
+  const visa = blueCardCheck(base.grossSalary, country, base.currency);
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
-    contents: prompt,
-    config: {
-      seed: 42, temperature: 0, responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          explanation: { type: Type.STRING },
-          costOfLiving: {
-            type: Type.OBJECT,
-            properties: {
-              total: { type: Type.NUMBER },
-              breakdown: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: {
-                category: { type: Type.STRING }, amount: { type: Type.NUMBER }, icon: { type: Type.STRING } } } },
-            },
-          },
-          disposableIncome: { type: Type.NUMBER },
-          optimizationTips: { type: Type.ARRAY, items: { type: Type.STRING } },
-          countryComparison: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: {
-            country: { type: Type.STRING }, netSalary: { type: Type.NUMBER }, currency: { type: Type.STRING } } } },
-          socialRights: { type: Type.OBJECT, properties: {
-            unemployment: { type: Type.STRING }, retirement: { type: Type.STRING }, healthInsurance: { type: Type.STRING } } },
-          lifestyleMatch: { type: Type.OBJECT, properties: {
-            score: { type: Type.NUMBER }, pros: { type: Type.ARRAY, items: { type: Type.STRING } },
-            cons: { type: Type.ARRAY, items: { type: Type.STRING } }, recommendation: { type: Type.STRING } } },
-          visaGuidance: { type: Type.OBJECT, properties: {
-            type: { type: Type.STRING }, requirements: { type: Type.ARRAY, items: { type: Type.STRING } }, process: { type: Type.STRING } } },
-          nomadIndex: { type: Type.OBJECT, properties: {
-            score: { type: Type.NUMBER }, vibe: { type: Type.STRING }, internetSpeed: { type: Type.STRING }, nightlife: { type: Type.STRING } } },
-          taxSankeyData: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: {
-            source: { type: Type.STRING }, target: { type: Type.STRING }, value: { type: Type.NUMBER }, label: { type: Type.STRING } } } },
-        },
-      },
-    },
-  });
-  if (!response.text) return base;
-  const extra = JSON.parse(response.text);
+  // Top-10 comparison: same profile, net converted to EUR.
+  const ranked = euCountries
+    .map((c) => {
+      const cur = TAX_RULES_2025[c]?.currency ?? 'EUR';
+      const net = deterministicNet(base.grossSalary, c, data.maritalStatus, data.children).net;
+      return { country: c, netSalary: Math.round(net / (TO_EUR[cur] ?? 1)), currency: 'EUR' as string };
+    })
+    .sort((a, b) => b.netSalary - a.netSalary);
+  const top10 = ranked.slice(0, 10);
+  if (!top10.some((r) => r.country === country) && ranked.length > 10) {
+    const self = ranked.find((r) => r.country === country)!;
+    top10[top10.length - 1] = self;
+  }
+
+  // Lifestyle score from local quality-of-life data (0–100).
+  const score = q
+    ? Math.round((q.safety + q.healthcare + q.internet + q.purchasingPower + (100 - q.pollution)) / 5)
+    : 65;
+  const pros: string[] = [];
+  const cons: string[] = [];
+  if (q) {
+    if (q.safety >= 75) pros.push('High personal safety');
+    if (q.healthcare >= 80) pros.push('Strong public healthcare');
+    if (q.internet >= 85) pros.push('Excellent internet for remote work');
+    if (q.purchasingPower >= 75) pros.push('Strong local purchasing power');
+    if (q.pollution >= 40) cons.push('Air quality can be poor in larger cities');
+    if (q.purchasingPower < 60) cons.push('Below-average local purchasing power');
+    if (q.healthcare < 65) cons.push('Public healthcare rated below EU average');
+  }
+  if (base.disposableIncome > 0) pros.push('Positive disposable income after local costs');
+  else cons.push('Tight budget after local living costs');
+  if (pros.length === 0) pros.push(COUNTRY_GUIDES[country]?.blurb ?? 'EU-wide labour protections apply');
+  if (cons.length === 0) cons.push('Regional taxes and rents vary — verify locally');
+
+  const nomadScore = q ? Math.round((q.internet + q.safety + q.purchasingPower) / 3) : 65;
+  const shortage = BLUE_CARD_SHORTAGE[country];
+  const requirements = [
+    visa.eligible
+      ? `Salary €${visa.grossEur.toLocaleString()} meets the Blue Card threshold (€${visa.thresholdEur.toLocaleString()})`
+      : `Salary €${visa.grossEur.toLocaleString()} is below the Blue Card threshold (€${visa.thresholdEur.toLocaleString()}) — a national permit may fit better`,
+    visaText,
+    ...(shortage ? [`Shortage-occupation route from €${shortage.toLocaleString()}`] : []),
+    ...(regime.savings > 0 ? [`${data.expatRegime} tax relief available (${regime.note})`] : []),
+  ].slice(0, 4);
+
   return {
     ...base,
-    explanation: extra.explanation ?? base.explanation,
-    costOfLiving: extra.costOfLiving ?? base.costOfLiving,
-    disposableIncome: extra.disposableIncome ?? base.disposableIncome,
-    optimizationTips: extra.optimizationTips ?? base.optimizationTips,
-    countryComparison: extra.countryComparison ?? [],
-    socialRights: extra.socialRights,
-    lifestyleMatch: extra.lifestyleMatch,
-    visaGuidance: extra.visaGuidance,
-    nomadIndex: extra.nomadIndex,
-    taxSankeyData: extra.taxSankeyData ?? base.taxSankeyData,
+    countryComparison: top10,
+    socialRights: {
+      unemployment: 'Earnings-related unemployment insurance funded by social contributions; EU coordination lets you export benefits while job-seeking in another member state.',
+      retirement: `Statutory pension accrues through contributions (reference age ${pension.age}); see the pension projection card for a rough estimate.`,
+      healthInsurance: 'Residence-based public healthcare funded by social contributions; your EHIC covers medically necessary care anywhere in the EU.',
+    },
+    lifestyleMatch: {
+      score,
+      pros: pros.slice(0, 3),
+      cons: cons.slice(0, 3),
+      recommendation: score >= 75
+        ? `${country} scores well for remote workers — strong basics with a liveable cost base.`
+        : score >= 60
+          ? `${country} is a solid base with trade-offs — check housing costs in ${city || 'the capital'} before committing.`
+          : `${country} can stretch a budget, but verify healthcare access and housing in ${city || 'your target city'} first.`,
+    },
+    visaGuidance: {
+      type: visa.eligible ? 'EU Blue Card' : 'National work permit',
+      requirements,
+      process: visaText,
+    },
+    nomadIndex: {
+      score: nomadScore,
+      vibe: city ? `${city} remote-work base` : `${country} remote-work base`,
+      internetSpeed: q ? `${q.internet}/100 connectivity index` : 'Varies by provider',
+      nightlife: city ? `${city}: varies by district — check local guides` : 'City-dependent',
+    },
+    expatSavings: regime.savings > 0 ? { amount: regime.savings, explanation: regime.note } : undefined,
     deterministic: true,
   };
 }
+
