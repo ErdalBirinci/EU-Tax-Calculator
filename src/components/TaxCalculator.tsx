@@ -4,12 +4,14 @@ import { euCountries } from '../i18n/translations';
 import { countryCities } from '../data/cities';
 import { expatRegimes } from '../data/expatRegimes';
 import { countryCurrencies } from '../data/currencies';
-import { calculateTaxes, TaxResult } from '../services/taxEngine';
+import { calculateTaxes, TaxResult, solveGrossFromNet, applyRegime, employerCost, pppAdjustedNet, blueCardCheck, TAX_RULES_VERSION } from '../services/taxEngine';
+import { COUNTRY_GUIDES } from '../data/marketExtras';
+import { EXPAT_DETAIL, visaNote, pensionOf, BLUE_CARD_SHORTAGE } from '../data/socialExtras';
+import { CountUp } from './CountUp';
 import { taxAuthorities, defaultTaxAuthority } from '../data/taxAuthorities';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { toPng } from 'html-to-image';
 import { TaxSankey } from './TaxSankey';
 import { Calculator, MapPin, Users, Baby, Loader2, AlertCircle, Briefcase, Calendar, Lightbulb, Wallet, Scale, Globe, Download, BarChart3, FileText, Sparkles, TrendingUp, ShieldCheck, CheckCircle2, Info, Home, ShoppingBag, Bus, Zap, Coffee, Utensils, Heart, Plane, Compass, Star, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -34,6 +36,13 @@ export function TaxCalculator() {
   const [children, setChildren] = useState<number>(0);
   const [expatRegime, setExpatRegime] = useState('none');
   const [employmentType, setEmploymentType] = useState('employment');
+  const [calcMode, setCalcMode] = useState<'grossToNet' | 'netToGross'>('grossToNet');
+  const [paymentsPerYear, setPaymentsPerYear] = useState<number>(12);
+  const [solvedFromNet, setSolvedFromNet] = useState(false);
+  interface SavedScenario { country: string; city: string; taxYear: number; gross: number; net: number; currency: string }
+  const [saved, setSaved] = useState<SavedScenario[]>(() => {
+    try { return JSON.parse(localStorage.getItem('eutax_saved') || '[]'); } catch { return []; }
+  });
   
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TaxResult | null>(null);
@@ -43,6 +52,8 @@ export function TaxCalculator() {
   const [isComparing, setIsComparing] = useState(false);
   const [comparisonResult, setComparisonResult] = useState<TaxResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedSummary, setCopiedSummary] = useState(false);
+  const [sharedResult, setSharedResult] = useState<{ net: number; tax: number; social: number; currency: string } | null>(null);
   
   const resultsRef = React.useRef<HTMLDivElement>(null);
 
@@ -58,6 +69,19 @@ export function TaxCalculator() {
     if (params.has('ch')) setChildren(Number(params.get('ch')) || 0);
     if (params.has('e')) setExpatRegime(params.get('e') || 'none');
     if (params.has('t')) setEmploymentType(params.get('t') || 'employment');
+    try {
+      const r = params.get('r');
+      if (r) {
+        const [n, ix, tx, ccy] = r.split('.');
+        if (n) setSharedResult({ net: Number(n), tax: Number(ix || 0), social: Number(tx || 0), currency: ccy || 'EUR' });
+      }
+    } catch { /* ignore malformed share */ }
+    const onCountryEvent = (ev: Event) => {
+      const c = (ev as CustomEvent<string>).detail;
+      if (c && countryCities[c]) handleMapSelect(c);
+    };
+    window.addEventListener('eutax:country', onCountryEvent);
+    return () => window.removeEventListener('eutax:country', onCountryEvent);
   }, []);
 
   const handleShare = () => {
@@ -71,6 +95,7 @@ export function TaxCalculator() {
     params.set('ch', children.toString());
     params.set('e', expatRegime);
     params.set('t', employmentType);
+    if (result) params.set('r', `${Math.round(result.netSalary)}.${Math.round(result.incomeTax)}.${Math.round(result.socialSecurity)}.${result.currency}`);
 
     const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
     navigator.clipboard.writeText(url);
@@ -78,38 +103,64 @@ export function TaxCalculator() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const saveScenario = () => {
+    if (!result) return;
+    const entry = { country, city, taxYear, gross: result.grossSalary, net: result.netSalary, currency: result.currency };
+    const next = [...saved.filter((s) => !(s.country === entry.country && s.gross === entry.gross)), entry].slice(-3);
+    setSaved(next);
+    try { localStorage.setItem('eutax_saved', JSON.stringify(next)); } catch { /* storage full */ }
+  };
+
+  const clearSaved = () => {
+    setSaved([]);
+    try { localStorage.removeItem('eutax_saved'); } catch { /* ignore */ }
+  };
+
+  const emailReport = () => {
+    if (!result) return;
+    const subject = encodeURIComponent(`My net salary estimate — ${country} ${taxYear}`);
+    const body = encodeURIComponent(`Gross: ${result.grossSalary.toLocaleString()} ${result.currency}/yr\nNet: ${result.netSalary.toLocaleString()} ${result.currency}/yr\nIncome tax: ${result.incomeTax.toLocaleString()}\nSocial: ${result.socialSecurity.toLocaleString()}\n\nEstimated with EU Tax Calculator (deterministic engine v${TAX_RULES_VERSION}). Not tax advice.`);
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  };
+
+  const copySummary = () => {
+    if (!result || !insights) return;
+    const lines = [
+      `EU Tax Calculator — ${country} ${taxYear}`,
+      `Gross: ${formatCurrency(result.grossSalary, result.currency)}/yr · Net: ${formatCurrency(result.netSalary, result.currency)}/yr`,
+      `Monthly net: ${formatCurrency(result.netSalary / 12, result.currency)} · Tax burden: ${Math.round(((result.incomeTax + result.socialSecurity) / result.grossSalary) * 100)}%`,
+      `Employer cost: ${formatCurrency(result.grossSalary + insights.emp, result.currency)}/yr · PPP net: €${insights.ppp.toLocaleString()}/yr`,
+      `Blue Card: ${insights.visa.eligible ? 'likely eligible' : 'below threshold'} (€${insights.visa.grossEur.toLocaleString()} vs €${insights.visa.thresholdEur.toLocaleString()})`,
+    ];
+    navigator.clipboard.writeText(lines.join('\n'));
+    setCopiedSummary(true);
+    setTimeout(() => setCopiedSummary(false), 2000);
+  };
+
   const exportPDF = async () => {
-    if (!result || !resultsRef.current) return;
-    
+    if (!result) return;
     setExporting(true);
     try {
-      const element = resultsRef.current;
-      const dataUrl = await toPng(element, {
-        quality: 0.95,
-        backgroundColor: '#f8fafc',
-        cacheBust: true,
-      });
-      
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgProps = pdf.getImageProperties(dataUrl);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
-      // Handle multi-page if needed, but usually results fit on one or two
-      let heightLeft = pdfHeight;
-      let position = 0;
-      let pageHeight = pdf.internal.pageSize.getHeight();
-
-      pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft >= 0) {
-        position = heightLeft - pdfHeight;
-        pdf.addPage();
-        pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
-        heightLeft -= pageHeight;
-      }
-
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(16);
+      pdf.text(`EU Tax Calculator — ${country} ${taxYear}`, 14, 18);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.text(`${city} · Gross ${formatCurrency(result.grossSalary, result.currency)} / yr · Net ${formatCurrency(result.netSalary, result.currency)} / yr`, 14, 26);
+      autoTable(pdf, {
+        startY: 32,
+        head: [[t('bracket'), t('rate'), t('amount')]],
+        body: (result.taxBreakdown ?? []).map(b => [b.bracket, b.rate, formatCurrency(b.amount, result.currency)]),
+        foot: [
+          [t('incomeTax'), '', formatCurrency(result.incomeTax, result.currency)],
+          [t('socialSecurity'), '', formatCurrency(result.socialSecurity, result.currency)],
+          [t('net'), '', formatCurrency(result.netSalary, result.currency)],
+        ],
+      });
+      const y = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+      pdf.setFontSize(9);
+      pdf.text(t('disclaimerText').slice(0, 280) + '...', 14, y, { maxWidth: 180 });
       pdf.save(`tax-report-${country.toLowerCase()}-${taxYear}.pdf`);
     } catch (err) {
       console.error('PDF Export Error:', err);
@@ -139,41 +190,89 @@ export function TaxCalculator() {
     setExpatRegime('none');
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!country || !grossSalary) return;
+  interface CalcInputs { country: string; city: string; grossSalary: number; period: string; maritalStatus: string; children: number; expatRegime: string; taxYear: number; employmentType: string; calcMode: 'grossToNet' | 'netToGross'; paymentsPerYear: number }
 
+  const runCalc = async (inp: CalcInputs) => {
+    if (!inp.country || !inp.grossSalary) return;
     setLoading(true);
     setError(null);
-    
     try {
-      const currentCurrency = country ? countryCurrencies[country] : { code: 'EUR', symbol: '€' };
+      const currentCurrency = countryCurrencies[inp.country] ?? { code: 'EUR', symbol: '€' };
+      let annualInput = inp.period === 'monthly' ? Number(inp.grossSalary) * 12 : Number(inp.grossSalary);
+      let fromNet = false;
+      if (inp.calcMode === 'netToGross') {
+        annualInput = solveGrossFromNet(annualInput, inp.country, inp.maritalStatus, inp.children, inp.paymentsPerYear);
+        fromNet = true;
+      }
       const res = await calculateTaxes({
-        country,
-        city,
-        grossSalary: Number(grossSalary),
-        period,
-        maritalStatus,
-        children,
+        country: inp.country,
+        city: inp.city,
+        grossSalary: inp.period === 'monthly' ? annualInput / 12 : annualInput,
+        period: inp.period,
+        maritalStatus: inp.maritalStatus,
+        children: inp.children,
         language,
-        expatRegime,
-        taxYear,
+        expatRegime: inp.expatRegime,
+        taxYear: inp.taxYear,
         currencyCode: currentCurrency.code,
-        employmentType
+        employmentType: inp.employmentType,
+        paymentsPerYear: inp.paymentsPerYear
       });
-      
+      setSolvedFromNet(fromNet);
       if (isComparing && result) {
         setComparisonResult(res);
       } else {
         setResult(res);
         setComparisonResult(null);
       }
+      pushHistory(inp, res);
+      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     } catch (err) {
       console.error(err);
       setError(t('error'));
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void runCalc({ country, city, grossSalary: Number(grossSalary), period, maritalStatus, children, expatRegime, taxYear, employmentType, calcMode, paymentsPerYear });
+  };
+
+  interface HistoryEntry extends CalcInputs { net: number; currency: string; ts: number }
+  const [history, setHistory] = useState<HistoryEntry[]>(() => {
+    try { return JSON.parse(localStorage.getItem('eutax_history') || '[]'); } catch { return []; }
+  });
+  const pushHistory = (inp: CalcInputs, res: TaxResult) => {
+    const entry: HistoryEntry = { ...inp, net: res.netSalary, currency: res.currency, ts: Date.now() };
+    setHistory((prev) => {
+      const next = [entry, ...prev.filter((h) => !(h.country === entry.country && h.grossSalary === entry.grossSalary && h.period === entry.period))].slice(0, 10);
+      try { localStorage.setItem('eutax_history', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+  const restoreHistory = (h: HistoryEntry) => {
+    setCountry(h.country);
+    setCity(h.city);
+    setGrossSalary(h.grossSalary);
+    setPeriod(h.period);
+    setMaritalStatus(h.maritalStatus);
+    setChildren(h.children);
+    setExpatRegime(h.expatRegime);
+    setTaxYear(h.taxYear);
+    setEmploymentType(h.employmentType);
+    setCalcMode(h.calcMode);
+    setPaymentsPerYear(h.paymentsPerYear);
+    void runCalc(h);
+  };
+  const applyPreset = (p: { country: string; grossSalary: number; expatRegime?: string }) => {
+    const cities = countryCities[p.country] ?? [];
+    const inp: CalcInputs = { country: p.country, city: cities[0] ?? '', grossSalary: p.grossSalary, period: 'yearly', maritalStatus: 'single', children: 0, expatRegime: p.expatRegime ?? 'none', taxYear: currentYear, employmentType: 'employment', calcMode: 'grossToNet', paymentsPerYear: 12 };
+    setCountry(inp.country); setCity(inp.city); setGrossSalary(inp.grossSalary); setPeriod('yearly');
+    setMaritalStatus('single'); setChildren(0); setExpatRegime(inp.expatRegime); setTaxYear(currentYear);
+    setEmploymentType('employment'); setCalcMode('grossToNet'); setPaymentsPerYear(12);
+    void runCalc(inp);
   };
 
   const formatCurrency = (amount: number, currency: string) => {
@@ -210,6 +309,22 @@ export function TaxCalculator() {
 
   const highlights = result ? getHighlights(result.explanation) : [];
 
+  const insights = result ? (() => {
+    const regime = applyRegime(result.grossSalary, country, expatRegime, result.incomeTax);
+    const emp = employerCost(result.grossSalary, country);
+    const ppp = pppAdjustedNet(result.netSalary, country, result.currency);
+    const visa = blueCardCheck(result.grossSalary, country, result.currency);
+    const guide = COUNTRY_GUIDES[country];
+    const perPay = result.netSalary / paymentsPerYear;
+    const pension = pensionOf(country);
+    const pensionAnnual = Math.round(result.netSalary * pension.replacement);
+    const expatDetail = expatRegime !== 'none' ? EXPAT_DETAIL[expatRegime] : undefined;
+    const visaShortage = BLUE_CARD_SHORTAGE[country];
+    const visaNoteText = visaNote(country);
+    const burden = Math.round(((result.incomeTax + result.socialSecurity) / Math.max(1, result.grossSalary)) * 100);
+    return { regime, emp, ppp, visa, guide, perPay, pension, pensionAnnual, expatDetail, visaShortage, visaNoteText, burden };
+  })() : null;
+
   return (
     <div className="space-y-8">
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -235,6 +350,14 @@ export function TaxCalculator() {
               {t('currencyNote')} {country && `Calculations are based on ${country}'s ${taxYear} tax laws.`}
             </p>
           </div>
+          <details className="mt-3 premium-card p-4">
+            <summary className="text-xs font-extrabold text-slate-600 cursor-pointer list-none flex items-center justify-between">{t('browseAll')}<span className="text-slate-400">+</span></summary>
+            <div className="flex flex-wrap gap-1.5 mt-3" role="listbox" aria-label="EU countries">
+              {euCountries.map((c) => (
+                <button key={c} role="option" aria-selected={country === c} onClick={() => handleMapSelect(c)} className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${country === c ? 'bg-ink-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{c}</button>
+              ))}
+            </div>
+          </details>
 
           <div className="mt-6 flex justify-center">
             <a 
@@ -377,9 +500,14 @@ export function TaxCalculator() {
             </div>
           )}
 
+          <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+            <button type="button" onClick={() => setCalcMode('grossToNet')} className={`py-2 rounded-lg text-xs font-extrabold transition-all ${calcMode === 'grossToNet' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>Gross → Net</button>
+            <button type="button" onClick={() => setCalcMode('netToGross')} className={`py-2 rounded-lg text-xs font-extrabold transition-all ${calcMode === 'netToGross' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>Net → Gross</button>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">{t('grossSalary')}</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">{calcMode === 'netToGross' ? t('net') : t('grossSalary')}</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <span className="text-slate-500 font-medium sm:text-sm">{currentCurrency.symbol}</span>
@@ -406,6 +534,19 @@ export function TaxCalculator() {
                 <option value="monthly">{t('monthly')}</option>
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t('paymentsY')}</label>
+            <select
+              value={paymentsPerYear}
+              onChange={(e) => setPaymentsPerYear(Number(e.target.value))}
+              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition-colors text-slate-900 outline-none"
+            >
+              <option value={12}>12 (monthly)</option>
+              <option value={13}>13 (incl. Christmas)</option>
+              <option value={14}>14 (Spain/Portugal/Greece)</option>
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -452,6 +593,18 @@ export function TaxCalculator() {
             {loading ? t('calculating') : t('calculate')}
           </button>
         </form>
+        {history.length > 0 && (
+          <div className="mt-5 pt-5 border-t border-slate-100">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">{t('recentCalc')}</p>
+            <div className="flex flex-wrap gap-2">
+              {history.slice(0, 5).map((h, i) => (
+                <button key={i} onClick={() => restoreHistory(h)} className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 border border-slate-200 text-[11px] font-bold text-slate-600 transition-all">
+                  {h.country} · {Number(h.grossSalary).toLocaleString()}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
 
@@ -540,13 +693,146 @@ export function TaxCalculator() {
                     </button>
                   </div>
 
+                  {sharedResult && (
+                    <div className="mb-6 p-4 rounded-2xl bg-violet-50 border border-violet-200 relative z-10 flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
+                      <p className="text-xs font-bold text-violet-900">Shared result: net <span className="font-black num-tabular">{formatCurrency(sharedResult.net, sharedResult.currency)}/yr</span> (tax {formatCurrency(sharedResult.tax, sharedResult.currency)}, social {formatCurrency(sharedResult.social, sharedResult.currency)}).</p>
+                      <button onClick={() => setSharedResult(null)} className="text-[11px] font-extrabold text-violet-500 hover:text-violet-700 whitespace-nowrap">Dismiss</button>
+                    </div>
+                  )}
+
+                  {insights && (
+                    <div className="mb-6 flex flex-wrap items-center gap-2 relative z-10">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-extrabold text-emerald-700">
+                        <ShieldCheck className="w-3.5 h-3.5" /> Deterministic v{TAX_RULES_VERSION} • {taxYear} brackets
+                      </span>
+                      {solvedFromNet && (
+                        <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-violet-50 border border-violet-200 text-[11px] font-extrabold text-violet-700">Net → Gross solved</span>
+                      )}
+                      <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-[11px] font-extrabold text-slate-600 num-tabular">{paymentsPerYear}× {formatCurrency(insights.perPay, result.currency)} / pay</span>
+                      <button onClick={saveScenario} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-gold-400/20 border border-gold-400/50 text-[11px] font-extrabold text-yellow-800 hover:bg-gold-400/30 transition-all">{t('saveB')}</button>
+                      <button onClick={emailReport} className="inline-flex items-center px-3 py-1.5 rounded-full bg-slate-900 text-white text-[11px] font-extrabold hover:bg-slate-700 transition-all">{t('emailB')}</button>
+                      <button onClick={copySummary} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-white border border-slate-200 text-[11px] font-extrabold text-slate-600 hover:border-slate-400 transition-all">{copiedSummary ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}{copiedSummary ? t('copiedB') : t('copySummaryB')}</button>
+                      {(taxAuthorities[country] || defaultTaxAuthority) && (
+                        <a href={(taxAuthorities[country] || defaultTaxAuthority).url} target="_blank" rel="noreferrer" className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-slate-200 text-[11px] font-extrabold text-slate-600 hover:border-slate-400 transition-all">Find a local advisor ↗</a>
+                      )}
+                    </div>
+                  )}
+
+                  {insights && insights.regime.savings > 0 && (
+                    <div className="mb-6 p-5 rounded-2xl bg-gradient-to-br from-ink-950 to-ink-800 text-white relative z-10">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-400 mb-1">Expat regime — computed saving</p>
+                      <p className="text-2xl font-black num-tabular">+{formatCurrency(insights.regime.savings, result.currency)} <span className="text-xs font-bold text-white/60">/ yr vs standard taxation</span></p>
+                      <p className="text-[11px] text-white/60 mt-1">{insights.regime.note}</p>
+                      {insights.expatDetail && (
+                        <div className="mt-3 grid sm:grid-cols-3 gap-2 text-left">
+                          {[['Who qualifies', insights.expatDetail.who], ['Duration', insights.expatDetail.duration], ['How to apply', insights.expatDetail.apply]].map(([h, b]) => (
+                            <div key={h} className="bg-white/10 border border-white/10 rounded-xl p-3">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-gold-400 mb-1">{h}</p>
+                              <p className="text-[11px] font-medium text-white/85 leading-relaxed">{b}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {insights && (
+                    <div className="mb-6 grid grid-cols-1 sm:grid-cols-3 gap-3 relative z-10">
+                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">Employer cost</p>
+                        <p className="text-lg font-black text-slate-900 num-tabular">{formatCurrency(result.grossSalary + insights.emp, result.currency)}</p>
+                        <p className="text-[11px] text-slate-500 font-medium">incl. +{formatCurrency(insights.emp, result.currency)} employer charges / yr</p>
+                      </div>
+                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">Purchasing power</p>
+                        <p className="text-lg font-black text-slate-900 num-tabular">€{insights.ppp.toLocaleString()} <span className="text-[11px] font-bold text-slate-400">PPP-adj / yr</span></p>
+                        <p className="text-[11px] text-slate-500 font-medium">What your net buys vs EU average (=100)</p>
+                      </div>
+                      <div className={`p-4 rounded-2xl border ${insights.visa.eligible ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">EU Blue Card</p>
+                        <p className={`text-lg font-black ${insights.visa.eligible ? 'text-emerald-700' : 'text-amber-700'}`}>{insights.visa.eligible ? 'Likely eligible' : 'Below threshold'}</p>
+                        <p className="text-[11px] text-slate-500 font-medium">€{insights.visa.grossEur.toLocaleString()} vs €{insights.visa.thresholdEur.toLocaleString()} required{insights.visaShortage ? ` · shortage route €${insights.visaShortage.toLocaleString()}` : ''}</p>
+                        <p className="text-[11px] text-slate-500 font-medium mt-1">{insights.visaNoteText}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {insights && (
+                    <div className="mb-6 p-5 rounded-2xl bg-white border border-slate-200 relative z-10 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">{t('pensionTitle')} · age {insights.pension.age}</p>
+                        <p className="text-xl font-black text-slate-900 num-tabular">≈{formatCurrency(insights.pensionAnnual, result.currency)} <span className="text-xs font-bold text-slate-400">/ yr at retirement ({Math.round(insights.pension.replacement * 100)}% replacement)</span></p>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-medium max-w-xs">Rough projection from today's net — public pension only, before taxes in retirement.</p>
+                    </div>
+                  )}
+
+                  {saved.length > 0 && (
+                    <div className="mb-6 p-5 rounded-2xl bg-white border border-slate-200 relative z-10">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">{t('savedTitle')} ({saved.length}/3)</p>
+                        <button onClick={clearSaved} className="text-[11px] font-bold text-red-500 hover:text-red-700">{t('clearBtn')}</button>
+                      </div>
+                      {saved.length >= 2 ? (
+                        <div className="overflow-x-auto slim-scroll">
+                          <table className="w-full text-sm min-w-[520px]">
+                            <thead>
+                              <tr className="text-left text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                <th className="py-2 pr-3">Scenario</th>
+                                <th className="py-2 pr-3 text-right">Gross / yr</th>
+                                <th className="py-2 pr-3 text-right">Net / yr</th>
+                                <th className="py-2 pr-3 text-right">Burden</th>
+                                <th className="py-2 text-right">PPP net</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(() => {
+                                const best = Math.max(...saved.map((s) => s.net));
+                                return saved.map((s, i) => {
+                                  const burden = Math.round(((s.gross - s.net) / Math.max(1, s.gross)) * 100);
+                                  return (
+                                    <tr key={i} className={`border-t border-slate-100 ${s.net === best ? 'bg-emerald-50/60' : ''}`}>
+                                      <td className="py-2.5 pr-3 font-bold text-slate-700">{s.net === best ? '★ ' : ''}{s.country} · {s.taxYear}</td>
+                                      <td className="py-2.5 pr-3 text-right font-bold text-slate-500 num-tabular">{formatCurrency(s.gross, s.currency)}</td>
+                                      <td className="py-2.5 pr-3 text-right font-black text-slate-900 num-tabular">{formatCurrency(s.net, s.currency)}</td>
+                                      <td className="py-2.5 pr-3 text-right font-bold text-slate-500 num-tabular">{burden}%</td>
+                                      <td className="py-2.5 text-right font-bold text-slate-500 num-tabular">€{pppAdjustedNet(s.net, s.country, s.currency).toLocaleString()}</td>
+                                    </tr>
+                                  );
+                                });
+                              })()}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {saved.map((s, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                              <span className="font-bold text-slate-700">{s.country} · {s.city} · {s.taxYear}</span>
+                              <span className="font-black text-slate-900 num-tabular">{formatCurrency(s.net, s.currency)} <span className="text-[10px] font-bold text-slate-400">net / yr</span></span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {insights && insights.guide && (
+                    <div className="mb-6 p-5 rounded-2xl bg-gold-400/10 border border-gold-400/30 relative z-10">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-yellow-700 mb-2">{country} payroll guide</p>
+                      <p className="text-xs text-slate-700 leading-relaxed font-medium">{insights.guide.blurb}</p>
+                      <p className="text-xs text-slate-600 leading-relaxed mt-2"><span className="font-extrabold">Payroll:</span> {insights.guide.payroll}</p>
+                      <p className="text-xs text-slate-600 leading-relaxed mt-1"><span className="font-extrabold">Watch out:</span> {insights.guide.pitfalls}</p>
+                    </div>
+                  )}
+
                   <div className="space-y-8 p-1">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
                     <div className="space-y-6">
                       <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 group transition-all hover:border-blue-200">
                         <p className="text-[10px] text-blue-400 font-black uppercase tracking-[0.2em] mb-2">{isComparing && comparisonResult ? t('scenario2') : t('gross')}</p>
                         <div className="flex items-baseline gap-2">
-                          <span className="text-4xl font-black text-slate-900">{formatCurrency(result.grossSalary, result.currency)}</span>
+                          <span className="text-4xl font-black text-slate-900"><CountUp value={result.grossSalary} format={(n) => formatCurrency(n, result.currency)} /></span>
                           <span className="text-sm font-bold text-slate-400">/ yr</span>
                         </div>
                         {comparisonResult && (
@@ -556,14 +842,14 @@ export function TaxCalculator() {
                         )}
                         <div className="mt-4 pt-4 border-t border-blue-200/50 flex justify-between items-center">
                           <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">{t('monthly')}</span>
-                          <span className="text-sm font-black text-slate-700">{formatCurrency(period === 'yearly' ? result.grossSalary / 12 : result.grossSalary, result.currency)}</span>
+                          <span className="text-sm font-black text-slate-700 num-tabular">{formatCurrency(result.grossSalary / 12, result.currency)}</span>
                         </div>
                       </div>
 
                       <div className="bg-green-600 p-6 rounded-2xl shadow-xl shadow-green-200 group transition-all hover:scale-[1.02]">
                         <p className="text-[10px] text-green-200 font-black uppercase tracking-[0.2em] mb-2">{isComparing && comparisonResult ? t('scenario2') : t('net')}</p>
                         <div className="flex items-baseline gap-2">
-                          <span className="text-5xl font-black text-white">{formatCurrency(result.netSalary, result.currency)}</span>
+                          <span className="text-5xl font-black text-white"><CountUp value={result.netSalary} format={(n) => formatCurrency(n, result.currency)} /></span>
                           <span className="text-sm font-bold text-green-300">/ yr</span>
                         </div>
                         {comparisonResult && (
@@ -573,7 +859,7 @@ export function TaxCalculator() {
                         )}
                         <div className="mt-4 pt-4 border-t border-white/10 flex justify-between items-center">
                           <span className="text-xs font-bold text-green-200 uppercase tracking-wider">{t('monthly')}</span>
-                          <span className="text-lg font-black text-white">{formatCurrency(period === 'yearly' ? result.netSalary / 12 : result.netSalary, result.currency)}</span>
+                          <span className="text-lg font-black text-white num-tabular">{formatCurrency(result.netSalary / 12, result.currency)}</span>
                         </div>
                       </div>
                     </div>
@@ -918,6 +1204,26 @@ export function TaxCalculator() {
                   </div>
                 )}
 
+                {/* Bracket waterfall */}
+                {result.taxBreakdown && result.taxBreakdown.length > 0 && (
+                  <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <h4 className="text-sm font-black text-slate-900 uppercase tracking-[0.2em] mb-6">{t('whereEuro')}</h4>
+                    <div className="space-y-2.5">
+                      {result.taxBreakdown.map((b, i) => (
+                        <div key={i}>
+                          <div className="flex justify-between text-[11px] font-bold mb-1">
+                            <span className="text-slate-600">{b.bracket} · {b.rate}</span>
+                            <span className="text-slate-900 num-tabular">{formatCurrency(b.amount, result.currency)}</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, (b.amount / Math.max(1, result.grossSalary)) * 100)}%` }} className="h-full bg-gradient-to-r from-blue-500 to-indigo-500" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Country Comparison */}
                 {result.countryComparison && result.countryComparison.length > 0 && (
                   <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
@@ -1075,10 +1381,27 @@ export function TaxCalculator() {
               <p className="text-sm max-w-md text-slate-500 font-medium leading-relaxed">
                 Select a country on the map or use the form to calculate your potential take-home pay across Europe.
               </p>
+              <div className="flex flex-wrap justify-center gap-2 mt-6">
+                <button onClick={() => applyPreset({ country: 'Germany', grossSalary: 80000 })} className="px-4 py-2 rounded-xl bg-ink-950 text-white text-xs font-extrabold hover:bg-ink-800 transition-all">Berlin · €80k → ?</button>
+                <button onClick={() => applyPreset({ country: 'Portugal', grossSalary: 45000 })} className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-extrabold text-slate-700 hover:border-slate-400 transition-all">Lisbon · €45k → ?</button>
+                <button onClick={() => applyPreset({ country: 'Netherlands', grossSalary: 65000, expatRegime: '30_ruling' })} className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-extrabold text-slate-700 hover:border-slate-400 transition-all">Amsterdam · €65k + ruling → ?</button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+      {result && !loading && (
+        <div className="md:hidden fixed bottom-3 left-3 right-3 z-40 bg-ink-950 text-white rounded-2xl shadow-2xl px-5 py-3.5 flex items-center justify-between no-print">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50">{country} net</p>
+            <p className="text-lg font-black num-tabular">{formatCurrency(result.netSalary, result.currency)}<span className="text-[10px] font-bold text-white/50"> / yr</span></p>
+          </div>
+          <div className="text-right">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50">Monthly</p>
+            <p className="text-lg font-black text-gold-400 num-tabular">{formatCurrency(result.netSalary / 12, result.currency)}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

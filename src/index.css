@@ -1,45 +1,148 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
-@import "leaflet/dist/leaflet.css";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  
-  --color-brand-yellow: #FACC15;
-  --color-brand-blue: #3B82F6;
-  --color-brand-green: #22C55E;
-  --color-brand-red: #EF4444;
-  
-  --color-brand-primary: var(--color-brand-blue);
-  --color-brand-secondary: var(--color-brand-yellow);
-  
-  --color-surface-bg: #f8fafc;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-ink-950: #0a1633;
+  --color-ink-900: #101f45;
+  --color-ink-800: #1a2c5c;
+  --color-gold-400: #d4af37;
+  --color-gold-500: #c9a227;
+  --color-gold-600: #a9861d;
+
+  --color-brand-blue: #2563eb;
+  --color-brand-yellow: #c9a227;
+  --color-brand-green: #16a34a;
+  --color-brand-red: #dc2626;
+
+  --color-surface-bg: #f6f7fb;
   --color-surface-card: #ffffff;
 }
 
 @layer base {
   body {
     @apply bg-surface-bg text-slate-900 antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  ::selection {
+    background: #0a1633;
+    color: #f5d76e;
   }
 }
 
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Premium surfaces */
+.premium-hero {
+  background:
+    radial-gradient(1200px 500px at 85% -10%, rgba(212, 175, 55, 0.22), transparent 60%),
+    radial-gradient(900px 480px at 8% 0%, rgba(37, 99, 235, 0.28), transparent 55%),
+    linear-gradient(180deg, #0a1633 0%, #101f45 60%, #16275a 100%);
+}
+
+.premium-card {
+  @apply bg-white border border-slate-200/80 rounded-3xl;
+  box-shadow: 0 1px 2px rgba(10, 22, 51, 0.05), 0 12px 40px -18px rgba(10, 22, 51, 0.25);
+}
+
+.premium-input {
+  @apply w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none transition-all text-slate-900;
+}
+.premium-input:focus {
+  @apply border-ink-950 ring-2 ring-ink-950/10 bg-white;
+}
+
+.gold-btn {
+  background: linear-gradient(180deg, #e3c558, #c9a227);
+  box-shadow: 0 10px 24px -10px rgba(201, 162, 39, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  @apply text-ink-950 font-extrabold transition-all;
+}
+.gold-btn:hover {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+}
+.gold-btn:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.eyebrow {
+  @apply inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em];
+}
+
+.num-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Slim scrollbars for result panes */
+.slim-scroll::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.slim-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+}
+
+/* Print: results only */
+@media print {
+  header, section, footer, form, .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+}
+
+/* Dark theme (opt-in via .dark on <html>) */
+.dark body {
+  background: #070f27;
+  color: #e2e8f0;
+}
+.dark .premium-card {
+  background: #0e1c42;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.dark .bg-white {
+  background-color: #0e1c42 !important;
+  border-color: rgba(255, 255, 255, 0.09) !important;
+}
+.dark .bg-slate-50 {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+.dark .text-slate-900 { color: #f1f5f9 !important; }
+.dark .text-slate-700, .dark .text-slate-600 { color: #cbd5e1 !important; }
+.dark .text-slate-500, .dark .text-slate-400 { color: #94a3b8 !important; }
+.dark .border-slate-200, .dark .border-slate-100 { border-color: rgba(255, 255, 255, 0.1) !important; }
+.dark .premium-input {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #f1f5f9;
+}
+.dark select.premium-input option { color: #0f172a; }
+.dark .prose { color: #cbd5e1 !important; }
+
+/* Legacy aliases kept so old components still compile */
 .glass-card {
   @apply bg-white border border-slate-200 rounded-2xl shadow-sm;
 }
-
 .cyber-border {
-  @apply border border-slate-200 hover:border-brand-primary/30 transition-colors;
+  @apply border border-slate-200;
 }
-
-.cyber-glow {
-  @apply shadow-sm;
-}
-
+.cyber-glow,
 .cyber-glow-pink {
   @apply shadow-sm;
 }
-
 .text-glow {
   text-shadow: none;
 }
