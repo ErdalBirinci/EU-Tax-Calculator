@@ -48,6 +48,8 @@ function Header() {
           <a href="#calculator" className="hover:text-white transition-colors">Calculator</a>
           <a href="#methodology" className="hover:text-white transition-colors">Methodology</a>
           <a href="#sources" className="hover:text-white transition-colors">Official sources</a>
+          <a href="https://wise.com/pay/me/erdalb143" target="_blank" rel="noreferrer"
+            className="rounded-full bg-gold-400 px-4 py-1.5 text-ink-950 font-extrabold hover:bg-gold-300 transition-colors">Donate</a>
         </nav>
         <div className="flex items-center gap-2">
           <ThemeToggle />
