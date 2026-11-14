@@ -1,4 +1,5 @@
 /** Country-tuned family relief, bonus-pay taxation, city costs, expat detail, visa + pension data. Estimates 2025/2026. */
+import type { TaxYear } from './taxRules';
 
 /** Family relief as fraction of income tax: married relief + per-child relief, capped. */
 export const FAMILY_RULES: Record<string, { married: number; perChild: number; cap: number }> = {
@@ -46,12 +47,23 @@ export const EXPAT_DETAIL: Record<string, ExpatDetail> = {
   expat_status: { who: 'Foreign executives/specialists (transitional regime)', duration: 'Case-by-case', apply: 'Ruling request via employer' },
 };
 
-/** Reduced Blue Card thresholds (shortage occupations) + notes, EUR annual. */
-export const BLUE_CARD_SHORTAGE: Record<string, number> = {
-  Germany: 45041, Netherlands: 38000, Sweden: 46000, France: 43000,
+/**
+ * Reduced Blue Card thresholds (shortage occupations), EUR annual.
+ * Same no-projection rule as the standard table: unpublished years hold the
+ * last published figure. Germany 2025 shortage is €43,759.80 (BMI), not 45,041.
+ */
+const BLUE_CARD_SHORTAGE_2025: Record<string, number> = {
+  Germany: 43760, Netherlands: 38000, Sweden: 46000, France: 43000,
 };
+export const BLUE_CARD_SHORTAGE_BY_YEAR: Record<TaxYear, Record<string, number>> = {
+  2025: BLUE_CARD_SHORTAGE_2025,
+  // No 2026 shortage line confirmed published yet — all held at 2025 values.
+  2026: { ...BLUE_CARD_SHORTAGE_2025 },
+};
+/** Countries whose 2026 shortage line is confirmed published (currently none). */
+export const BLUE_CARD_SHORTAGE_PUBLISHED_2026: string[] = [];
 export const VISA_NOTES: Record<string, string> = {
-  Germany: 'EU Blue Card €48,300 standard / ~€45,041 shortage. Chancenkarte points route exists without a job offer.',
+  Germany: 'EU Blue Card €48,300 (2025) / €50,700 (2026) standard; shortage €43,760 (2025 line, 2026 pending). Chancenkarte points route exists without a job offer.',
   France: 'Passeport Talent from ~€41k for qualified employees; Blue Card ~€53,700.',
   Netherlands: 'Highly Skilled Migrant €46,100 (under-30 reduced); 30% ruling needs separate approval.',
   Spain: 'Highly Qualified Professional permit; Beckham Law is a tax regime, not a visa.',

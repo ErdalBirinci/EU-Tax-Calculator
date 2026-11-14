@@ -92,6 +92,7 @@ Automated verification: `npm run verify-taxes` — for **both** tax years it che
 | Credit that rises then phases out | NL (algemene heffingskorting + arbeidskorting, piecewise schedule) |
 | Progressive social charge | IE (USC) |
 | Marriage splitting | DE (Ehegattensplitting) |
+| Dated Blue Card lines | Year-split thresholds; unpublished years hold the last published figure and the UI labels its reference year — never projected |
 | Family parts | FR (quotient familial, €1,807 cap per half part) |
 | Flat bonus-payment tax | AT (6 % on 13th/14th salary) |
 

@@ -1,4 +1,5 @@
 /** Market/SEO extras: employer cost, PPP, FX, visa thresholds, guides. Estimates 2025/2026. */
+import type { TaxYear } from './taxRules';
 
 export const TAX_RULES_VERSION = '2026.2';
 
@@ -26,8 +27,17 @@ export const TO_EUR: Record<string, number> = {
   EUR: 1, BGN: 1.9558, CZK: 25.1, DKK: 7.46, HUF: 395, PLN: 4.31, RON: 4.97, SEK: 11.4,
 };
 
-/** EU Blue Card salary thresholds 2025, annual gross EUR (standard route, approx). */
-export const BLUE_CARD: Record<string, number> = {
+/**
+ * EU Blue Card salary thresholds, annual gross EUR (standard route, approx).
+ *
+ * National lines reset every January and are only entered here once published
+ * (Germany: BMI by 31 Dec — 2025 €48,300, 2026 €50,700). Figures for a year
+ * that is not published yet are HELD at the previous year's value and must be
+ * labelled with their reference year in the UI — never projected. The harness
+ * (scripts/verify-taxes.ts) enforces this: 2026 may only differ from 2025 for
+ * countries listed in BLUE_CARD_PUBLISHED_2026.
+ */
+const BLUE_CARD_2025: Record<string, number> = {
   Germany: 48300, France: 53700, Netherlands: 46100, Spain: 33500, Italy: 33500,
   Portugal: 33500, Ireland: 65000, Denmark: 55000, Sweden: 52000, Finland: 38000,
   Austria: 48000, Belgium: 47000, Luxembourg: 58000, Greece: 33000, Poland: 33000,
@@ -35,6 +45,14 @@ export const BLUE_CARD: Record<string, number> = {
   Hungary: 33000, Romania: 33000, Bulgaria: 33000, Estonia: 33000, Latvia: 33000,
   Lithuania: 33000, Cyprus: 33000, Malta: 33000,
 };
+export const BLUE_CARD_BY_YEAR: Record<TaxYear, Record<string, number>> = {
+  2025: BLUE_CARD_2025,
+  // Only Germany's 2026 line is confirmed published (€50,700 standard route);
+  // every other country holds its 2025 figure until its ministry publishes.
+  2026: { ...BLUE_CARD_2025, Germany: 50700 },
+};
+/** Countries whose 2026 Blue Card line is confirmed published (BMI, Germany). */
+export const BLUE_CARD_PUBLISHED_2026: string[] = ['Germany'];
 
 /** Deterministic expat-regime effects applied on top of standard brackets. */
 export interface RegimeEffect { exemptFraction: number; flatRate?: number; /** exemption applies only above this gross */ exemptAbove?: number; note: string }

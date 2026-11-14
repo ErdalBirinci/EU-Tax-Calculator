@@ -7,8 +7,9 @@
  * French barème + 10 % abattement, etc. If the engine drifts, these fail.
  */
 import { TAX_RULES_BY_YEAR, SUPPORTED_TAX_YEARS, calculateDeterministic, socialSecurityOf } from '../src/data/taxRules';
-import { deterministicNet, solveGrossFromNet, applyRegime } from '../src/services/taxEngine';
-import { TO_EUR } from '../src/data/marketExtras';
+import { deterministicNet, solveGrossFromNet, applyRegime, blueCardCheck, blueCardThresholdYear, blueCardShortage } from '../src/services/taxEngine';
+import { TO_EUR, BLUE_CARD_BY_YEAR, BLUE_CARD_PUBLISHED_2026 } from '../src/data/marketExtras';
+import { BLUE_CARD_SHORTAGE_BY_YEAR, BLUE_CARD_SHORTAGE_PUBLISHED_2026 } from '../src/data/socialExtras';
 
 let failures = 0;
 const fail = (msg: string) => { failures++; console.error('FAIL:', msg); };
@@ -209,6 +210,37 @@ for (const year of SUPPORTED_TAX_YEARS) {
     if (Math.abs(farAbove - atCap) > 2) fail(`${year} ${c}: contributions do not saturate at the ceiling (${atCap} → ${farAbove})`);
   }
 }
+
+// ── 8. Blue Card thresholds: dated, never projected ────────────────────────
+// Policy (from the review thread): a new year's line is entered only once published;
+// unpublished years hold the previous figure and the UI labels its reference year.
+for (const year of SUPPORTED_TAX_YEARS) {
+  if (Object.keys(BLUE_CARD_BY_YEAR[year]).length !== 27) fail(`Blue Card ${year}: expected 27 countries`);
+  for (const c of Object.keys(BLUE_CARD_BY_YEAR[2025])) {
+    const t = BLUE_CARD_BY_YEAR[year][c];
+    if (!(t > 0)) fail(`Blue Card ${year} ${c}: missing threshold`);
+  }
+}
+for (const c of Object.keys(BLUE_CARD_BY_YEAR[2025])) {
+  const published = BLUE_CARD_PUBLISHED_2026.includes(c);
+  const same = BLUE_CARD_BY_YEAR[2026][c] === BLUE_CARD_BY_YEAR[2025][c];
+  if (published === same) fail(`Blue Card ${c}: 2026 ${same ? 'holds' : 'differs but is'} ${published ? '' : 'not '}published — projection or stale line`);
+  const sp = BLUE_CARD_SHORTAGE_PUBLISHED_2026.includes(c);
+  const sameS = (BLUE_CARD_SHORTAGE_BY_YEAR[2026][c] ?? null) === (BLUE_CARD_SHORTAGE_BY_YEAR[2025][c] ?? null);
+  if (sp === sameS) fail(`Blue Card shortage ${c}: 2026 ${sameS ? 'holds' : 'differs but is'} ${sp ? '' : 'not '}published`);
+}
+// Germany anchors (BMI: 2025 standard €48,300 / shortage €43,759.80; 2026 standard €50,700).
+if (BLUE_CARD_BY_YEAR[2025].Germany !== 48300) fail('Blue Card DE 2025 should be 48,300');
+if (BLUE_CARD_BY_YEAR[2026].Germany !== 50700) fail('Blue Card DE 2026 should be 50,700');
+if (BLUE_CARD_SHORTAGE_BY_YEAR[2025].Germany !== 43760) fail('Blue Card DE 2025 shortage should be 43,760');
+const de26 = blueCardCheck(60000, 'Germany', 'EUR', 2026);
+if (de26.thresholdEur !== 50700 || de26.thresholdYear !== 2026 || !de26.eligible) fail('DE 2026: 60k should clear the published 50,700 line');
+const de25 = blueCardCheck(40000, 'Germany', 'EUR', 2025);
+if (de25.thresholdEur !== 48300 || de25.thresholdYear !== 2025 || de25.eligible) fail('DE 2025: 40k should be below the 48,300 line');
+const fr26 = blueCardCheck(60000, 'France', 'EUR', 2026);
+if (fr26.thresholdYear !== 2025) fail('FR 2026 should resolve to the held 2025 line');
+const sh26 = blueCardShortage('Germany', 2026);
+if (!sh26 || sh26.amount !== 43760 || sh26.year !== 2025) fail('DE shortage 2026 should hold the 2025 line (43,760)');
 
 console.log(failures === 0 ? 'ALL CHECKS PASSED' : `${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

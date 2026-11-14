@@ -4,12 +4,12 @@ import { euCountries } from '../i18n/translations';
 import { countryCities } from '../data/cities';
 import { expatRegimes } from '../data/expatRegimes';
 import { countryCurrencies } from '../data/currencies';
-import { calculateTaxes, TaxResult, solveGrossFromNet, deterministicNet, applyRegime, employerCost, pppAdjustedNet, blueCardCheck, TAX_RULES_VERSION } from '../services/taxEngine';
+import { calculateTaxes, TaxResult, solveGrossFromNet, deterministicNet, applyRegime, employerCost, pppAdjustedNet, blueCardCheck, blueCardShortage, TAX_RULES_VERSION } from '../services/taxEngine';
 import { storageGet, storageSet, storageRemove } from '../services/storage';
 import { rulesFor, socialSecurityOf, SUPPORTED_TAX_YEARS, DEFAULT_TAX_YEAR } from '../data/taxRules';
 import { CountryCompare } from './CountryCompare';
 import { COUNTRY_GUIDES } from '../data/marketExtras';
-import { EXPAT_DETAIL, visaNote, pensionOf, BLUE_CARD_SHORTAGE } from '../data/socialExtras';
+import { EXPAT_DETAIL, visaNote, pensionOf } from '../data/socialExtras';
 import { CountUp } from './CountUp';
 import { taxAuthorities, defaultTaxAuthority } from '../data/taxAuthorities';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
@@ -132,7 +132,7 @@ export function TaxCalculator() {
       `Gross: ${formatCurrency(result.grossSalary, result.currency)}/yr · Net: ${formatCurrency(result.netSalary, result.currency)}/yr`,
       `Monthly net: ${formatCurrency(result.netSalary / 12, result.currency)} · Tax burden: ${Math.round(((result.incomeTax + result.socialSecurity) / result.grossSalary) * 100)}%`,
       `Employer cost: ${formatCurrency(result.grossSalary + insights.emp, result.currency)}/yr · PPP net: €${insights.ppp.toLocaleString()}/yr`,
-      `Blue Card: ${insights.visa.eligible ? 'likely eligible' : 'below threshold'} (€${insights.visa.grossEur.toLocaleString()} vs €${insights.visa.thresholdEur.toLocaleString()})`,
+      `Blue Card: ${insights.visa.eligible ? 'likely eligible' : 'below threshold'} (€${insights.visa.grossEur.toLocaleString()} vs €${insights.visa.thresholdEur.toLocaleString()}, ${insights.visa.thresholdYear} line)`,
     ];
     navigator.clipboard.writeText(lines.join('\n'));
     setCopiedSummary(true);
@@ -312,16 +312,16 @@ export function TaxCalculator() {
   const highlights = result ? getHighlights(result.explanation) : [];
 
   const insights = result ? (() => {
-    const regime = applyRegime(result.grossSalary, country, expatRegime, result.incomeTax);
+    const regime = applyRegime(result.grossSalary, country, expatRegime, result.incomeTax, taxYear);
     const emp = employerCost(result.grossSalary, country);
     const ppp = pppAdjustedNet(result.netSalary, country, result.currency);
-    const visa = blueCardCheck(result.grossSalary, country, result.currency);
+    const visa = blueCardCheck(result.grossSalary, country, result.currency, taxYear);
     const guide = COUNTRY_GUIDES[country];
     const perPay = result.netSalary / paymentsPerYear;
     const pension = pensionOf(country);
     const pensionAnnual = Math.round(result.netSalary * pension.replacement);
     const expatDetail = expatRegime !== 'none' ? EXPAT_DETAIL[expatRegime] : undefined;
-    const visaShortage = BLUE_CARD_SHORTAGE[country];
+    const visaShortage = blueCardShortage(country, taxYear);
     const visaNoteText = visaNote(country);
     const burden = Math.round(((result.incomeTax + result.socialSecurity) / Math.max(1, result.grossSalary)) * 100);
     return { regime, emp, ppp, visa, guide, perPay, pension, pensionAnnual, expatDetail, visaShortage, visaNoteText, burden };
@@ -779,7 +779,7 @@ export function TaxCalculator() {
                       <div className={`p-4 rounded-2xl border ${insights.visa.eligible ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">EU Blue Card</p>
                         <p className={`text-lg font-black ${insights.visa.eligible ? 'text-emerald-700' : 'text-amber-700'}`}>{insights.visa.eligible ? 'Likely eligible' : 'Below threshold'}</p>
-                        <p className="text-[11px] text-slate-500 font-medium">€{insights.visa.grossEur.toLocaleString()} vs €{insights.visa.thresholdEur.toLocaleString()} required{insights.visaShortage ? ` · shortage route €${insights.visaShortage.toLocaleString()}` : ''}</p>
+                        <p className="text-[11px] text-slate-500 font-medium">€{insights.visa.grossEur.toLocaleString()} vs €{insights.visa.thresholdEur.toLocaleString()} required ({insights.visa.thresholdYear}{insights.visa.thresholdYear !== taxYear ? ' — current year pending' : ''}){insights.visaShortage ? ` · shortage route €${insights.visaShortage.amount.toLocaleString()} (${insights.visaShortage.year})` : ''}</p>
                         <p className="text-[11px] text-slate-500 font-medium mt-1">{insights.visaNoteText}</p>
                       </div>
                     </div>

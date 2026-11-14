@@ -2,8 +2,8 @@ import {
   calculateDeterministic, rulesFor, incomeTaxOn, incomeTaxFromBase, taxableBaseOf,
   taxBreakdownFromBase, socialSecurityOf, TAX_RULES_CURRENT, DEFAULT_TAX_YEAR,
 } from "../data/taxRules";
-import { REGIME_EFFECTS, EMPLOYER_RATES, PPP_INDEX, TO_EUR, BLUE_CARD, TAX_RULES_VERSION, COUNTRY_GUIDES } from "../data/marketExtras";
-import { familyRule, bonusRule, CITY_COL, pensionOf, visaNote, BLUE_CARD_SHORTAGE } from "../data/socialExtras";
+import { REGIME_EFFECTS, EMPLOYER_RATES, PPP_INDEX, TO_EUR, BLUE_CARD_BY_YEAR, BLUE_CARD_PUBLISHED_2026, TAX_RULES_VERSION, COUNTRY_GUIDES } from "../data/marketExtras";
+import { familyRule, bonusRule, CITY_COL, pensionOf, visaNote, BLUE_CARD_SHORTAGE_BY_YEAR, BLUE_CARD_SHORTAGE_PUBLISHED_2026 } from "../data/socialExtras";
 import { countryQualityOfLife } from "../data/qualityOfLife";
 import { euCountries } from "../i18n/translations";
 import { storageGet, storageSet } from "./storage";
@@ -257,11 +257,26 @@ export function pppAdjustedNet(netAnnualLocal: number, country: string, currency
   return Math.round(netEur * (100 / (PPP_INDEX[country] ?? 100)));
 }
 
-export function blueCardCheck(annualGrossLocal: number, country: string, currencyCode: string): { thresholdEur: number; grossEur: number; eligible: boolean } {
+/**
+ * Reference year of the Blue Card line actually used: the requested year when its
+ * figure is confirmed published, otherwise the last published year (currently
+ * 2025). Thresholds are never projected — see the LinkedIn-thread policy.
+ */
+export function blueCardThresholdYear(country: string, year: number): 2025 | 2026 {
+  if (year >= 2026 && BLUE_CARD_PUBLISHED_2026.includes(country)) return 2026;
+  return 2025;
+}
+export function blueCardShortage(country: string, year: number): { amount: number; year: 2025 | 2026 } | undefined {
+  const refYear: 2025 | 2026 = year >= 2026 && BLUE_CARD_SHORTAGE_PUBLISHED_2026.includes(country) ? 2026 : 2025;
+  const amount = BLUE_CARD_SHORTAGE_BY_YEAR[refYear][country];
+  return amount === undefined ? undefined : { amount, year: refYear };
+}
+export function blueCardCheck(annualGrossLocal: number, country: string, currencyCode: string, year?: number): { thresholdEur: number; grossEur: number; eligible: boolean; thresholdYear: 2025 | 2026 } {
   const rate = TO_EUR[currencyCode] ?? 1;
   const grossEur = annualGrossLocal / rate;
-  const thresholdEur = BLUE_CARD[country] ?? 33500;
-  return { thresholdEur, grossEur: Math.round(grossEur), eligible: grossEur >= thresholdEur };
+  const thresholdYear = blueCardThresholdYear(country, year ?? DEFAULT_TAX_YEAR);
+  const thresholdEur = BLUE_CARD_BY_YEAR[thresholdYear][country] ?? 33500;
+  return { thresholdEur, grossEur: Math.round(grossEur), eligible: grossEur >= thresholdEur, thresholdYear };
 }
 
 export async function calculateTaxes(data: {
@@ -298,7 +313,7 @@ function buildLocalEnrichment(
   const visaText = visaNote(country);
   const year = (data as { taxYear?: number }).taxYear ?? DEFAULT_TAX_YEAR;
   const regime = applyRegime(base.grossSalary, country, data.expatRegime, base.incomeTax, year);
-  const visa = blueCardCheck(base.grossSalary, country, base.currency);
+  const visa = blueCardCheck(base.grossSalary, country, base.currency, year);
 
   // Top-10 comparison: same profile, net converted to EUR.
   const ranked = euCountries
@@ -335,13 +350,14 @@ function buildLocalEnrichment(
   if (cons.length === 0) cons.push('Regional taxes and rents vary — verify locally');
 
   const nomadScore = q ? Math.round((q.internet + q.safety + q.purchasingPower) / 3) : 65;
-  const shortage = BLUE_CARD_SHORTAGE[country];
+  const shortage = blueCardShortage(country, year);
+  const lineRef = visa.thresholdYear === year ? `${visa.thresholdYear} line` : `${visa.thresholdYear} line (${year} not yet published)`;
   const requirements = [
     visa.eligible
-      ? `Salary €${visa.grossEur.toLocaleString()} meets the Blue Card threshold (€${visa.thresholdEur.toLocaleString()})`
-      : `Salary €${visa.grossEur.toLocaleString()} is below the Blue Card threshold (€${visa.thresholdEur.toLocaleString()}) — a national permit may fit better`,
+      ? `Salary €${visa.grossEur.toLocaleString()} meets the Blue Card threshold (€${visa.thresholdEur.toLocaleString()}, ${lineRef})`
+      : `Salary €${visa.grossEur.toLocaleString()} is below the Blue Card threshold (€${visa.thresholdEur.toLocaleString()}, ${lineRef}) — a national permit may fit better`,
     visaText,
-    ...(shortage ? [`Shortage-occupation route from €${shortage.toLocaleString()}`] : []),
+    ...(shortage ? [`Shortage-occupation route from €${shortage.amount.toLocaleString()} (${shortage.year} line)`] : []),
     ...(regime.savings > 0 ? [`${data.expatRegime} tax relief available (${regime.note})`] : []),
   ].slice(0, 4);
 
