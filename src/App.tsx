@@ -8,16 +8,18 @@ import { GuidesGrid, GuidePage, slugify } from './components/CountryGuide';
 import { COUNTRY_GUIDES } from './data/marketExtras';
 import { taxAuthorities } from './data/taxAuthorities';
 import { deterministicNet } from './services/taxEngine';
-import { Globe, ShieldCheck, Zap, Languages, Moon, Sun, Calculator } from 'lucide-react';
+import { Globe, ShieldCheck, Zap, Languages, Moon, Sun, Calculator, Cookie } from 'lucide-react';
 import { Language } from './i18n/translations';
+import { storageGet, storageSet, getConsent, setConsent } from './services/storage';
+import { PrivacyPolicy, LegalNotice } from './components/LegalPages';
 
 function ThemeToggle() {
   const [dark, setDark] = useState(() => {
-    try { return localStorage.getItem('eutax_theme') === 'dark'; } catch { return false; }
+    return storageGet('eutax_theme') === 'dark';
   });
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
-    try { localStorage.setItem('eutax_theme', dark ? 'dark' : 'light'); } catch { /* ignore */ }
+    storageSet('eutax_theme', dark ? 'dark' : 'light');
   }, [dark]);
   return (
     <button
@@ -27,6 +29,35 @@ function ThemeToggle() {
     >
       {dark ? <Sun className="w-4 h-4 text-gold-400" /> : <Moon className="w-4 h-4 text-white/70" />}
     </button>
+  );
+}
+
+function SkipLink({ target }: { target: string }) {
+  const { t } = useLanguage();
+  return (
+    <a href={`#${target}`} className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:rounded-lg focus:bg-gold-400 focus:px-4 focus:py-2 focus:text-sm focus:font-extrabold focus:text-ink-950">
+      {t('skipToContent')}
+    </a>
+  );
+}
+
+function ConsentBanner() {
+  const { t } = useLanguage();
+  const [visible, setVisible] = useState(() => getConsent() === null);
+  if (!visible) return null;
+  const choose = (c: 'all' | 'essential') => { setConsent(c); setVisible(false); };
+  return (
+    <div role="region" aria-label="Cookie consent" className="fixed bottom-3 inset-x-3 sm:inset-x-auto sm:right-5 sm:bottom-5 sm:max-w-md z-[90] rounded-2xl border border-white/10 bg-ink-950/95 backdrop-blur-xl p-5 shadow-2xl">
+      <div className="flex items-start gap-3">
+        <Cookie className="w-5 h-5 text-gold-400 shrink-0 mt-0.5" />
+        <p className="text-[13px] leading-relaxed text-white/80">{t('consentMessage')}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mt-4">
+        <button onClick={() => choose('all')} className="rounded-xl bg-gold-400 px-4 py-2 text-[13px] font-extrabold text-ink-950 hover:bg-gold-300 transition-colors">{t('consentAccept')}</button>
+        <button onClick={() => choose('essential')} className="rounded-xl border border-white/20 px-4 py-2 text-[13px] font-bold text-white/80 hover:bg-white/10 transition-colors">{t('consentEssential')}</button>
+        <a href="#/privacy" className="text-[12px] font-bold text-gold-400 hover:underline ml-auto">{t('consentPrivacy')}</a>
+      </div>
+    </div>
   );
 }
 
@@ -174,7 +205,8 @@ function Footer() {
           </div>
           <p className="text-xs leading-relaxed max-w-xs">
             Open-source estimate tool. Tax rules change frequently — verify with official sources
-            before making financial decisions.
+            before making financial decisions. Independent project — not affiliated with EU
+            institutions or tax authorities.
           </p>
         </div>
         <div className="text-sm md:col-span-2">
@@ -213,6 +245,8 @@ function Footer() {
           <p className="text-white font-bold text-xs uppercase tracking-[0.18em] mb-3">Project</p>
           <ul className="space-y-2 text-[13px]">
             <li><a className="hover:text-gold-400" href="https://wise.com/pay/me/erdalb143" target="_blank" rel="noreferrer">Donate</a></li>
+            <li><a className="hover:text-gold-400" href="#/privacy">Privacy Policy</a></li>
+            <li><a className="hover:text-gold-400" href="#/legal">Legal Notice</a></li>
             <li><a className="hover:text-gold-400" href="#top">Back to top</a></li>
           </ul>
         </div>
@@ -233,41 +267,70 @@ function guideFromHash(): string | null {
   return Object.keys(COUNTRY_GUIDES).find((c) => slugify(c) === m[1]) ?? null;
 }
 
+type Page = { kind: 'home' } | { kind: 'guide'; country: string } | { kind: 'privacy' } | { kind: 'legal' };
+function pageFromHash(): Page {
+  const h = window.location.hash;
+  if (h === '#/privacy') return { kind: 'privacy' };
+  if (h === '#/legal') return { kind: 'legal' };
+  const g = guideFromHash();
+  return g ? { kind: 'guide', country: g } : { kind: 'home' };
+}
 function AppContent() {
-  const [guide, setGuide] = useState<string | null>(() => guideFromHash());
+  const [page, setPage] = useState<Page>(() => pageFromHash());
   useEffect(() => {
-    const onHash = () => { setGuide(guideFromHash()); window.scrollTo({ top: 0 }); };
+    const onHash = () => { setPage(pageFromHash()); window.scrollTo({ top: 0 }); };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   const openGuide = (c: string) => { window.location.hash = `/guide/${slugify(c)}`; };
+  const guide = page.kind === 'guide' ? page.country : null;
   const calcInCountry = (c: string) => {
     window.location.hash = '';
-    setGuide(null);
+    setPage({ kind: 'home' });
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('eutax:country', { detail: c }));
       document.getElementById('calculator')?.scrollIntoView({ behavior: 'smooth' });
     }, 60);
   };
+  const goHome = () => { window.location.hash = ''; setPage({ kind: 'home' }); };
+  if (page.kind === 'privacy' || page.kind === 'legal') {
+    return (
+      <div id="top" className="min-h-screen font-sans bg-surface-bg dark:bg-ink-950">
+        <SkipLink target="main-content" />
+        <Header />
+        {page.kind === 'privacy' ? <PrivacyPolicy /> : <LegalNotice />}
+        <Footer />
+        <ConsentBanner />
+      </div>
+    );
+  }
   if (guide) {
     return (
       <div id="top" className="min-h-screen font-sans">
+        <SkipLink target="main-content" />
         <Header />
-        <GuidePage country={guide} onBack={() => { window.location.hash = ''; setGuide(null); }} onCalculate={calcInCountry} />
+        <main id="main-content">
+          <GuidePage country={guide} onBack={goHome} onCalculate={calcInCountry} />
+        </main>
         <Footer />
+        <ConsentBanner />
       </div>
     );
   }
   return (
     <div id="top" className="min-h-screen font-sans">
+      <SkipLink target="main-content" />
       <Header />
       <Hero />
-      <main id="calculator" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-2 pb-4 scroll-mt-20">
-        <TaxCalculator />
+      <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-2 pb-4">
+        <div id="calculator" className="scroll-mt-20">
+          <TaxCalculator />
+        </div>
       </main>
       <Methodology />
       <GuidesGrid onOpen={openGuide} />
       <Footer />
+      <ConsentBanner />
     </div>
   );
 }

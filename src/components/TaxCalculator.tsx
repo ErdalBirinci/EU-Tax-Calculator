@@ -5,6 +5,7 @@ import { countryCities } from '../data/cities';
 import { expatRegimes } from '../data/expatRegimes';
 import { countryCurrencies } from '../data/currencies';
 import { calculateTaxes, TaxResult, solveGrossFromNet, deterministicNet, applyRegime, employerCost, pppAdjustedNet, blueCardCheck, TAX_RULES_VERSION } from '../services/taxEngine';
+import { storageGet, storageSet, storageRemove } from '../services/storage';
 import { TAX_RULES_2025 } from '../data/taxRules';
 import { CountryCompare } from './CountryCompare';
 import { COUNTRY_GUIDES } from '../data/marketExtras';
@@ -42,7 +43,7 @@ export function TaxCalculator() {
   const [solvedFromNet, setSolvedFromNet] = useState(false);
   interface SavedScenario { country: string; city: string; taxYear: number; gross: number; net: number; currency: string }
   const [saved, setSaved] = useState<SavedScenario[]>(() => {
-    try { return JSON.parse(localStorage.getItem('eutax_saved') || '[]'); } catch { return []; }
+    try { return JSON.parse(storageGet('eutax_saved') || '[]'); } catch { return []; }
   });
   
   const [loading, setLoading] = useState(false);
@@ -109,12 +110,12 @@ export function TaxCalculator() {
     const entry = { country, city, taxYear, gross: result.grossSalary, net: result.netSalary, currency: result.currency };
     const next = [...saved.filter((s) => !(s.country === entry.country && s.gross === entry.gross)), entry].slice(-3);
     setSaved(next);
-    try { localStorage.setItem('eutax_saved', JSON.stringify(next)); } catch { /* storage full */ }
+    storageSet('eutax_saved', JSON.stringify(next));
   };
 
   const clearSaved = () => {
     setSaved([]);
-    try { localStorage.removeItem('eutax_saved'); } catch { /* ignore */ }
+    storageRemove('eutax_saved');
   };
 
   const emailReport = () => {
@@ -243,13 +244,13 @@ export function TaxCalculator() {
 
   interface HistoryEntry extends CalcInputs { net: number; currency: string; ts: number }
   const [history, setHistory] = useState<HistoryEntry[]>(() => {
-    try { return JSON.parse(localStorage.getItem('eutax_history') || '[]'); } catch { return []; }
+    try { return JSON.parse(storageGet('eutax_history') || '[]'); } catch { return []; }
   });
   const pushHistory = (inp: CalcInputs, res: TaxResult) => {
     const entry: HistoryEntry = { ...inp, net: res.netSalary, currency: res.currency, ts: Date.now() };
     setHistory((prev) => {
       const next = [entry, ...prev.filter((h) => !(h.country === entry.country && h.grossSalary === entry.grossSalary && h.period === entry.period))].slice(0, 10);
-      try { localStorage.setItem('eutax_history', JSON.stringify(next)); } catch { /* ignore */ }
+      storageSet('eutax_history', JSON.stringify(next));
       return next;
     });
   };
@@ -601,7 +602,7 @@ export function TaxCalculator() {
                   a.href = URL.createObjectURL(blob); a.download = 'eu-tax-history.csv'; a.click();
                   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
                 }} className="text-[10px] font-extrabold text-blue-600 hover:text-blue-800">Export CSV</button>
-                <button onClick={() => { setHistory([]); try { localStorage.removeItem('eutax_history'); } catch { /* ignore */ } }} className="text-[10px] font-extrabold text-red-500 hover:text-red-700">Clear</button>
+                <button onClick={() => { setHistory([]); storageRemove('eutax_history'); }} className="text-[10px] font-extrabold text-red-500 hover:text-red-700">Clear</button>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">

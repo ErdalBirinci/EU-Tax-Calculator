@@ -3,6 +3,7 @@ import { REGIME_EFFECTS, EMPLOYER_RATES, PPP_INDEX, TO_EUR, BLUE_CARD, TAX_RULES
 import { familyRule, bonusRule, CITY_COL, pensionOf, visaNote, BLUE_CARD_SHORTAGE } from "../data/socialExtras";
 import { countryQualityOfLife } from "../data/qualityOfLife";
 import { euCountries } from "../i18n/translations";
+import { storageGet, storageSet } from "./storage";
 
 export { TAX_RULES_VERSION };
 
@@ -34,7 +35,7 @@ const CACHE_KEY = 'tax_calc_cache_v3'; // bump when the result shape changes
 const getPersistentCache = () => {
   try {
     if (typeof localStorage === 'undefined') return new Map<string, TaxResult>();
-    const stored = localStorage.getItem(CACHE_KEY);
+    const stored = storageGet(CACHE_KEY);
     if (stored) return new Map<string, TaxResult>(JSON.parse(stored));
   } catch (e) {
     console.error('Failed to load cache', e);
@@ -46,7 +47,7 @@ const savePersistentCache = (cache: Map<string, TaxResult>) => {
   try {
     if (typeof localStorage === 'undefined') return;
     const entries = Array.from(cache.entries()).slice(-50);
-    localStorage.setItem(CACHE_KEY, JSON.stringify(entries));
+    storageSet(CACHE_KEY, JSON.stringify(entries));
   } catch (e) {
     console.error('Failed to save cache', e);
   }

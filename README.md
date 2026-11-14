@@ -118,6 +118,13 @@ scripts/
 docs/screenshots/      # README images
 ```
 
+## Regulatory compliance (EU)
+
+- **GDPR / ePrivacy:** no backend, no cookies, no analytics, no ads, no external requests (fonts are self-hosted). Browser storage (theme, saved scenarios, history, result cache) is written only after consent via the on-site banner; “Essential only” keeps everything session-only in memory. Details and a one-click “delete all my data” button: in-app Privacy Policy (`#/privacy`).
+- **Consumer transparency:** every result page carries an estimate-only disclaimer; the footer states the project is independent and not affiliated with EU institutions or tax authorities (`#/legal`).
+- **Accessibility (EAA/WCAG 2.1 AA):** skip link, landmarks, visible focus, keyboard-operable country selection (chart bars are decorative — the same countries are reachable as real buttons), 6-language UI.
+- **AI Act:** no AI system is used — figures are computed deterministically from fixed tables.
+
 ## Limitations
 
 An estimation tool, not tax advice. Regional surcharges (Spanish autonomous regions, Italian regional/municipal add-ons, Belgian municipal tax), church tax and some personal deductions are not modelled. Estonia's basic exemption and Slovakia's 2026 top brackets are approximate. Confirm with your local tax authority before signing a contract.
