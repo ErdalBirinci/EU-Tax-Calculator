@@ -59,18 +59,20 @@ export function TaxCalculator() {
   
   const resultsRef = React.useRef<HTMLDivElement>(null);
 
-  // Load state from URL if present
+  // Load state from URL if present. Everything here is untrusted input (shared
+  // links can be hand-crafted): whitelist every value so a bad link can never
+  // crash the render or smuggle an invalid state into the form.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.has('c')) setCountry(params.get('c') || '');
-    if (params.has('y')) setTaxYear(Number(params.get('y')) || currentYear);
-    if (params.has('ci')) setCity(params.get('ci') || '');
-    if (params.has('g')) setGrossSalary(Number(params.get('g')) || '');
-    if (params.has('p')) setPeriod(params.get('p') || 'yearly');
-    if (params.has('m')) setMaritalStatus(params.get('m') || 'single');
-    if (params.has('ch')) setChildren(Number(params.get('ch')) || 0);
-    if (params.has('e')) setExpatRegime(params.get('e') || 'none');
-    if (params.has('t')) setEmploymentType(params.get('t') || 'employment');
+    if (params.has('c')) { const c = params.get('c') || ''; if (euCountries.includes(c)) setCountry(c); }
+    if (params.has('y')) { const y = Number(params.get('y')); if ((SUPPORTED_TAX_YEARS as readonly number[]).includes(y)) setTaxYear(y); }
+    if (params.has('ci')) setCity((params.get('ci') || '').slice(0, 80));
+    if (params.has('g')) { const g = Number(params.get('g')); if (Number.isFinite(g) && g >= 0 && g <= 1_000_000_000) setGrossSalary(Math.floor(g)); }
+    if (params.has('p')) setPeriod(params.get('p') === 'monthly' ? 'monthly' : 'yearly');
+    if (params.has('m')) setMaritalStatus(params.get('m') === 'married' ? 'married' : 'single');
+    if (params.has('ch')) { const ch = Number(params.get('ch')); if (Number.isFinite(ch)) setChildren(Math.min(10, Math.max(0, Math.floor(ch)))); }
+    if (params.has('e')) setExpatRegime((params.get('e') || 'none').slice(0, 40));
+    if (params.has('t')) setEmploymentType(params.get('t') === 'b2b' ? 'b2b' : 'employment');
     try {
       const r = params.get('r');
       if (r) {
@@ -195,30 +197,38 @@ export function TaxCalculator() {
   interface CalcInputs { country: string; city: string; grossSalary: number; period: string; maritalStatus: string; children: number; expatRegime: string; taxYear: number; employmentType: string; calcMode: 'grossToNet' | 'netToGross'; paymentsPerYear: number }
 
   const runCalc = async (inp: CalcInputs) => {
-    if (!inp.country || !inp.grossSalary) return;
+    // Sanitize untrusted inputs (URL params, presets, history): finite, bounded,
+    // known country, supported enum values. Never trust raw caller data.
+    const gross = Number.isFinite(inp.grossSalary) ? Math.min(Math.max(0, Math.floor(inp.grossSalary)), 1_000_000_000) : 0;
+    if (!inp.country || !gross) return;
+    if (!euCountries.includes(inp.country)) { setError(t('error')); return; }
+    const kids = Number.isFinite(inp.children) ? Math.min(Math.max(0, Math.floor(inp.children)), 10) : 0;
+    const payments = [12, 13, 14].includes(inp.paymentsPerYear) ? inp.paymentsPerYear : 12;
+    const year = SUPPORTED_TAX_YEARS.includes(inp.taxYear as (typeof SUPPORTED_TAX_YEARS)[number]) ? inp.taxYear : DEFAULT_TAX_YEAR;
+    const mode = inp.calcMode === 'netToGross' ? 'netToGross' : 'grossToNet';
     setLoading(true);
     setError(null);
     try {
       const currentCurrency = countryCurrencies[inp.country] ?? { code: 'EUR', symbol: '€' };
-      let annualInput = inp.period === 'monthly' ? Number(inp.grossSalary) * 12 : Number(inp.grossSalary);
+      let annualInput = inp.period === 'monthly' ? gross * 12 : gross;
       let fromNet = false;
-      if (inp.calcMode === 'netToGross') {
-        annualInput = solveGrossFromNet(annualInput, inp.country, inp.maritalStatus, inp.children, inp.paymentsPerYear);
+      if (mode === 'netToGross') {
+        annualInput = solveGrossFromNet(annualInput, inp.country, inp.maritalStatus, kids, payments);
         fromNet = true;
       }
       const res = await calculateTaxes({
         country: inp.country,
         city: inp.city,
         grossSalary: inp.period === 'monthly' ? annualInput / 12 : annualInput,
-        period: inp.period,
-        maritalStatus: inp.maritalStatus,
-        children: inp.children,
+        period: inp.period === 'monthly' ? 'monthly' : 'yearly',
+        maritalStatus: inp.maritalStatus === 'married' ? 'married' : 'single',
+        children: kids,
         language,
         expatRegime: inp.expatRegime,
-        taxYear: inp.taxYear,
+        taxYear: year,
         currencyCode: currentCurrency.code,
-        employmentType: inp.employmentType,
-        paymentsPerYear: inp.paymentsPerYear
+        employmentType: inp.employmentType === 'b2b' ? 'b2b' : 'employment',
+        paymentsPerYear: payments
       });
       setSolvedFromNet(fromNet);
       if (isComparing && result) {
@@ -292,7 +302,7 @@ export function TaxCalculator() {
 
   const availableCities = country ? countryCities[country] || [] : [];
   const availableExpatRegimes = country ? expatRegimes[country] || [] : [];
-  const currentCurrency = country ? countryCurrencies[country] : { code: 'EUR', symbol: '€' };
+  const currentCurrency = (country ? countryCurrencies[country] : undefined) ?? { code: 'EUR', symbol: '€' };
 
   const pieData = result ? [
     { name: t('net'), value: result.netSalary, color: '#22C55E' }, // Green
