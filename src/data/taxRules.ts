@@ -333,7 +333,8 @@ export const TAX_RULES_BY_YEAR: Record<TaxYear, Record<string, CountryTaxRule>> 
       effectiveTopRate: 60,
       notesEn: 'Municipal rate is local (avg. 25.05 %). ATP ≈ DKK 99/month not modelled.',
     },
-    // FI 2026: state scale (top steps removed) + municipal 7.60 % combined here;
+    // FI 2026: state scale combined with local taxes here; numbers match the real
+    // state + municipal/county burden (the 7.60 % label is the municipal average).
     // employee contributions 7.30 (TyEL) + 0.89 (unemployment) + 1.10 + 0.88 (health) = 10.17 %.
     Finland: {
       currency: 'EUR',
@@ -350,7 +351,8 @@ export const TAX_RULES_BY_YEAR: Record<TaxYear, Record<string, CountryTaxRule>> 
       notesEn: 'Municipal rate varies 4.7–10.9 % (7.60 % average used). Basic deduction not modelled.',
     },
     // IE 2026: 20 % to €44,000, 40 % above; credits €2,000 personal + €2,000 PAYE;
-    // PRSI 4.2 % + USC (0.5 / 2 / 3 / 8).
+    // IE 2026: 20 % to €44,000, 40 % above; credits €2,000 personal + €2,000 PAYE;
+    // PRSI 4.2 % (4.15 % Jan–Sep, 4.2 % from Oct 2026) + USC (0.5 / 2 / 3 / 8).
     Ireland: {
       currency: 'EUR',
       allowance: 0,
@@ -367,7 +369,7 @@ export const TAX_RULES_BY_YEAR: Record<TaxYear, Record<string, CountryTaxRule>> 
       ],
       taxCredit: 4000,
       effectiveTopRate: 48,
-      notesEn: 'USC and PRSI modelled separately; PRSI rises to 4.35 % from Oct 2026.',
+      notesEn: 'USC and PRSI modelled separately; PRSI 4.2 % from Oct 2026 (4.15 % before).',
     },
     // PL 2026: 12 % to 120,000 PLN (30,000 allowance), 32 % above.
     // ZUS 13.71 % capped 282,600; health 9 % of (gross − ZUS) ≈ 7.77 % of gross.
