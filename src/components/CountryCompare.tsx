@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { euCountries } from '../i18n/translations';
 import { deterministicNet } from '../services/taxEngine';
 import { TO_EUR } from '../data/marketExtras';
-import { TAX_RULES_2025 } from '../data/taxRules';
+import { TAX_RULES_CURRENT } from '../data/taxRules';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Globe } from 'lucide-react';
 
@@ -14,7 +14,7 @@ export function CountryCompare({ highlight, onSelect }: { highlight?: string; on
     return euCountries
       .map((c) => {
         const r = deterministicNet(g, c, 'single', 0);
-        const cur = TAX_RULES_2025[c]?.currency ?? 'EUR';
+        const cur = TAX_RULES_CURRENT[c]?.currency ?? 'EUR';
         return { country: c, net: Math.round(r.net / (TO_EUR[cur] ?? 1)) };
       })
       .sort((a, b) => b.net - a.net);

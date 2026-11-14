@@ -1,4 +1,7 @@
-import { calculateDeterministic, TAX_RULES_2025 } from "../data/taxRules";
+import {
+  calculateDeterministic, rulesFor, incomeTaxOn, incomeTaxFromBase, taxableBaseOf,
+  taxBreakdownFromBase, socialSecurityOf, TAX_RULES_CURRENT, DEFAULT_TAX_YEAR,
+} from "../data/taxRules";
 import { REGIME_EFFECTS, EMPLOYER_RATES, PPP_INDEX, TO_EUR, BLUE_CARD, TAX_RULES_VERSION, COUNTRY_GUIDES } from "../data/marketExtras";
 import { familyRule, bonusRule, CITY_COL, pensionOf, visaNote, BLUE_CARD_SHORTAGE } from "../data/socialExtras";
 import { countryQualityOfLife } from "../data/qualityOfLife";
@@ -62,7 +65,7 @@ function buildDeterministicResult(data: {
 }): TaxResult {
   const annualGross = data.period === 'monthly' ? data.grossSalary * 12 : data.grossSalary;
   const payments = data.paymentsPerYear ?? 12;
-  const calc = deterministicNet(annualGross, data.country, data.maritalStatus, data.children, payments);
+  const calc = deterministicNet(annualGross, data.country, data.maritalStatus, data.children, payments, data.taxYear);
   const adjTax = calc.incomeTax;
   const adjNet = calc.net;
   const socialSecurity = calc.socialSecurity;
@@ -70,7 +73,7 @@ function buildDeterministicResult(data: {
 
   const monthlyNet = adjNet / 12;
   const colMonthly = estimateCOL(data.country, data.city);
-  const currency = TAX_RULES_2025[data.country]?.currency ?? data.currencyCode;
+  const currency = rulesFor(data.country, data.taxYear)?.currency ?? data.currencyCode;
 
   return {
     grossSalary: Math.round(annualGross),
@@ -128,18 +131,18 @@ function defaultTips(country: string, employmentType?: string, maritalStatus?: s
   return tips.slice(0, 3);
 }
 
-/** Income-tax-only lookup (social handled separately). */
-const incomeOnly = (c: string, g: number) => calculateDeterministic(c, g).incomeTax;
+/** Income-tax-only lookup for a gross salary in a given tax year. */
+const incomeOnly = (c: string, g: number, year?: number) => incomeTaxOn(c, g, year);
 
 /**
  * Parts-based income tax (France quotient familial / Germany Ehegattensplitting).
  * tax = parts × tariff(gross / parts); France caps the benefit at €1,807 per
  * extra half-part (revenus 2025, BOFiP). Returns { tax, parts, saving }.
  */
-function partsBasedTax(country: string, baseGross: number, baseParts: number, parts: number, capPerHalfPart?: number): { tax: number; parts: number; saving: number } {
-  const incomeOnlyC = (g: number) => calculateDeterministic(country, g).incomeTax;
-  const reference = Math.round(baseParts * incomeOnlyC(baseGross / baseParts));
-  const quotient = Math.round(parts * incomeOnlyC(baseGross / parts));
+function partsBasedTax(country: string, baseGross: number, baseParts: number, parts: number, capPerHalfPart?: number, year?: number): { tax: number; parts: number; saving: number } {
+  const base = taxableBaseOf(country, baseGross, year);
+  const reference = Math.round(baseParts * incomeTaxFromBase(country, base / baseParts, baseGross, year));
+  const quotient = Math.round(parts * incomeTaxFromBase(country, base / parts, baseGross, year));
   let saving = Math.max(0, reference - quotient);
   if (capPerHalfPart !== undefined) saving = Math.min(saving, Math.round((parts - baseParts) * 2 * capPerHalfPart));
   return { tax: reference - saving, parts, saving };
@@ -154,7 +157,7 @@ function franceParts(maritalStatus: string, children: number): { base: number; p
 }
 
 /** Net from gross — single source of truth: country-tuned family relief + bonus-pay taxation. */
-export function deterministicNet(annualGross: number, country: string, maritalStatus: string, children: number, paymentsPerYear = 12) {
+export function deterministicNet(annualGross: number, country: string, maritalStatus: string, children: number, paymentsPerYear = 12, year?: number) {
   const rule = familyRule(country);
   const bonus = paymentsPerYear > 12 ? bonusRule(country) : undefined;
   let baseGross = annualGross;
@@ -166,24 +169,29 @@ export function deterministicNet(annualGross: number, country: string, maritalSt
     bonusTax = Math.round(bonusPart * bonus.rate);
     bonusNote = `${paymentsPerYear - 12} bonus payment(s) taxed at flat ${Math.round(bonus.rate * 100)}% (${bonus.note})`;
   }
-  let det = calculateDeterministic(country, baseGross);
+  let det = calculateDeterministic(country, baseGross, year);
   // France married: show bracket rows on the 2-part base so rows + benefit line = final tax.
   if (country === 'France' && maritalStatus === 'married') {
-    const per = calculateDeterministic(country, baseGross / 2);
-    det = { ...per, incomeTax: per.incomeTax * 2, breakdown: per.breakdown.map(r => ({ ...r, amount: Math.round(r.amount * 2) })) };
+    const halfBase = taxableBaseOf(country, baseGross, year) / 2;
+    const per = incomeTaxFromBase(country, halfBase, baseGross, year);
+    det = {
+      ...det,
+      incomeTax: Math.round(per * 2),
+      breakdown: taxBreakdownFromBase(country, halfBase, baseGross, year).map(r => ({ ...r, amount: Math.round(r.amount * 2) })),
+    };
   }
-  const fullSocial = calculateDeterministic(country, annualGross).socialSecurity;
+  const fullSocial = socialSecurityOf(country, annualGross, year);
   // France: quotient familial (parts × tariff share, €1,807 cap per extra half-part).
   // Germany (married): Ehegattensplitting — 2 × tariff(half income).
   let baseIncomeTax = det.incomeTax;
   let partsNote = '';
   if (country === 'France') {
     const { base, parts } = franceParts(maritalStatus, children);
-    const q = partsBasedTax(country, baseGross, base, parts, 1807);
+    const q = partsBasedTax(country, baseGross, base, parts, 1807, year);
     baseIncomeTax = q.tax;
     if (q.saving > 0) partsNote = `Family quotient (${parts} parts) saves €${q.saving.toLocaleString()}`;
   } else if (country === 'Germany' && maritalStatus === 'married') {
-    const q = partsBasedTax(country, baseGross, 2, 2);
+    const q = partsBasedTax(country, baseGross, 2, 2, undefined, year);
     baseIncomeTax = q.tax;
     if (q.saving > 0) partsNote = `Joint splitting (2 × half income) saves €${q.saving.toLocaleString()}`;
   }
@@ -210,9 +218,9 @@ export function deterministicNet(annualGross: number, country: string, maritalSt
 }
 
 /** Solve required gross for a target net (bisection, ~40 iterations, exact to 1 unit). */
-export function solveGrossFromNet(targetNetAnnual: number, country: string, maritalStatus: string, children: number, paymentsPerYear = 12): number {
+export function solveGrossFromNet(targetNetAnnual: number, country: string, maritalStatus: string, children: number, paymentsPerYear = 12, year?: number): number {
   let lo = targetNetAnnual, hi = Math.max(targetNetAnnual * 2.5, targetNetAnnual + 10000);
-  const netOf = (g: number) => deterministicNet(g, country, maritalStatus, children, paymentsPerYear).net;
+  const netOf = (g: number) => deterministicNet(g, country, maritalStatus, children, paymentsPerYear, year).net;
   while (netOf(hi) < targetNetAnnual) hi *= 1.5;
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
@@ -222,7 +230,7 @@ export function solveGrossFromNet(targetNetAnnual: number, country: string, mari
 }
 
 /** Apply an expat regime deterministically. Returns adjusted {incomeTax, savings}. */
-export function applyRegime(annualGross: number, country: string, regimeId: string | undefined, baseIncomeTax: number): { incomeTax: number; savings: number; note: string } {
+export function applyRegime(annualGross: number, country: string, regimeId: string | undefined, baseIncomeTax: number, year?: number): { incomeTax: number; savings: number; note: string } {
   if (!regimeId || regimeId === 'none') return { incomeTax: baseIncomeTax, savings: 0, note: '' };
   const eff = REGIME_EFFECTS[regimeId];
   if (!eff) return { incomeTax: baseIncomeTax, savings: 0, note: '' };
@@ -234,9 +242,9 @@ export function applyRegime(annualGross: number, country: string, regimeId: stri
   const taxableBase = eff.exemptAbove !== undefined
     ? annualGross - eff.exemptFraction * Math.max(0, annualGross - eff.exemptAbove)
     : annualGross * (1 - eff.exemptFraction);
-  const reduced = calculateDeterministic(country, taxableBase);
-  const savings = Math.max(0, baseIncomeTax - reduced.incomeTax);
-  return { incomeTax: reduced.incomeTax, savings, note: eff.note };
+  const reducedTax = incomeTaxOn(country, taxableBase, year);
+  const savings = Math.max(0, baseIncomeTax - reducedTax);
+  return { incomeTax: Math.round(reducedTax), savings, note: eff.note };
 }
 
 export function employerCost(annualGross: number, country: string): number {
@@ -288,14 +296,15 @@ function buildLocalEnrichment(
   const q = countryQualityOfLife[country];
   const pension = pensionOf(country);
   const visaText = visaNote(country);
-  const regime = applyRegime(base.grossSalary, country, data.expatRegime, base.incomeTax);
+  const year = (data as { taxYear?: number }).taxYear ?? DEFAULT_TAX_YEAR;
+  const regime = applyRegime(base.grossSalary, country, data.expatRegime, base.incomeTax, year);
   const visa = blueCardCheck(base.grossSalary, country, base.currency);
 
   // Top-10 comparison: same profile, net converted to EUR.
   const ranked = euCountries
     .map((c) => {
-      const cur = TAX_RULES_2025[c]?.currency ?? 'EUR';
-      const net = deterministicNet(base.grossSalary, c, data.maritalStatus, data.children).net;
+      const cur = rulesFor(c, year)?.currency ?? 'EUR';
+      const net = deterministicNet(base.grossSalary, c, data.maritalStatus, data.children, 12, year).net;
       return { country: c, netSalary: Math.round(net / (TO_EUR[cur] ?? 1)), currency: 'EUR' as string };
     })
     .sort((a, b) => b.netSalary - a.netSalary);

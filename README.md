@@ -9,7 +9,7 @@ Gross-to-net salary calculator across all 27 EU countries. Official 2025/2026 ta
 ## Features
 
 ### Calculator
-- **27 EU countries** with official 2025/2026 income tax brackets + employee social security rates
+- **27 EU countries × 2 tax years (2025 and 2026)**, each with its own verified bracket table and employee contribution rates — the year selector only offers years that are actually modelled
 - **Gross → Net and Net → Gross** (a solver that finds the gross needed for a target net)
 - Marital status, number of children, city, 12/13/14 salary payments
 - **Country-specific tax logic:** France quotient familial (€1,807 cap), Germany spouse splitting (Ehegattensplitting), Austria flat 6% bonus tax
@@ -51,28 +51,49 @@ User input
 
 ## Tax tables and sources
 
-Tables live in `src/data/taxRules.ts`; thresholds/rates verified against official sources (2025/2026):
+Tables live in `src/data/taxRules.ts`, one block per tax year, each re-checked against primary national sources (Nov 2026):
 
-| Country | Source | Note |
+| Country | 2026 changes worth knowing | Source |
 |---|---|---|
-| Germany | BMF §32a EStG | Piecewise-linear fit to the 2026 formula tariff (±7%) |
-| Austria | BMF Tarifstufen 2025 | 40% (since 2024), indexed thresholds |
-| France | service-public.gouv.fr / BOFiP | 2026 barème + quotient familial (€1,807 cap) |
-| Italy | Agenzia delle Entrate | IRPEF 23/25/43 |
-| Belgium | PwC Tax Summaries (2025) | 16,320 / 28,800 / 49,840 |
-| Netherlands | Belastingdienst | Box 1: 35.82% / 37.48% / 49.5% |
-| Portugal | State Budget 2025 | Thresholds +4.62%, rates start at 13% |
-| Spain | Agencia Tributaria | Combined state + regional approach |
-| Ireland | Revenue | Blended PAYE 20%/40% + USC/PRSI |
-| Sweden | Skatteverket | Skiktgräns 625,800 kr (2025) |
-| Denmark | skat.dk | AM 8% + bottom/state 37.02% + topskat 15% (above 611,800 kr), ceiling 52.07% |
-| Lithuania | VMI | 20% up to €126,533, 32% above (2025) |
-| Latvia | Ministry of Finance | 2025 reform: 25.5% / 33% (+3 pp above €200,000) |
-| Czechia | KPMG Tax Card 2025 | 23% above 1,676,052 CZK |
-| Slovakia | PwC | 19% up to ~€48,441, 25% above (2025) |
-| Others | EC Taxation Trends + national administrations | Verifiable via the 27 official links in the footer |
+| Germany | §32a formula fitted with six linear slices (±0.5%); health/care ceiling €69,750, pension €101,400 | BMF Datensammlung 2026 |
+| Austria | Indexed Tarifstufen (13,539 / 21,992 / 36,458 / 70,365 / 104,859), social ceiling €97,020 | BMF Steuertarif |
+| France | 2026 barème 11,600 / 29,579 / 84,577 / 181,917 + 10% abattement (cap €14,555) + quotient familial | service-public F1419, BOFiP |
+| Italy | **Middle rate cut 35% → 33%** for 2026 (Legge 199/2025) | Agenzia delle Entrate |
+| Netherlands | Box 1 8.10 / 37.56 / 49.5, national insurance 27.65% (cap €38,883), credit €3,115 | Belastingdienst |
+| Belgium | Brackets 16,720 / 29,510 / 51,070 and tax-free sum €11,550 | FOD Financiën |
+| Greece | **New six-bracket scale** 9/20/26/34/39/44 (Law 5246/2025) | minfin.gr, AADE |
+| Cyprus | **2026 reform**: tax-free amount €22,000, bands 32/42/72k | Tax Department CY |
+| Denmark | **Middle-bracket tax added**: 37.06% to 641,200, +7.5% to 777,900, +7.5% to 2,592,700, +5% above | skat.dk |
+| Finland | New state scale (top steps removed) + municipal 7.60%; contributions 10.17% | Vero |
+| Sweden | Skiktgräns 643,000; municipal 32.38%; 7% pension contribution fully credited | Skatteverket |
+| Slovakia | **Four brackets** 19/25/30/35, health contribution 5% | Finančná správa |
+| Lithuania | **New 25% band** 83,237–138,729 (20/25/32) | VMI, Sodra |
+| Portugal | 2026 rates 12.2 → 48% (DL 212/2026) | Autoridade Tributária |
+| Bulgaria | **Euro area since 1 Jan 2026** — table switches BGN → EUR | NRA, SSIB 2026 |
+| Czechia | Threshold 1,762,812 CZK; social ceiling 2,350,416; credit 30,840 | Finanční správa |
+| Slovenia | Indexed brackets, allowance €5,551.93, contributions 23.10% | FURS |
+| Poland | ZUS ceiling 282,600 PLN; health contribution not deductible | ZUS, podatki.gov.pl |
+| Others | Values unchanged or indexed only | National administrations (27 links in the footer) |
 
-Automated verification: `npm run verify-taxes` — accounting identity (`net + tax + social = gross`), monotonicity, net→gross solver round-trips and 30+ official tariff spot checks across 27 countries × 12 income levels × marital status × children. Details: `scripts/verify-taxes.ts`.
+Automated verification: `npm run verify-taxes` — for **both** tax years it checks the accounting identity (`net + tax + social = gross`), monotonicity, contribution-ceiling saturation, net→gross solver round-trips, and ~40 official tariff anchors computed by hand from the statute (e.g. German §32a, Dutch Box 1 + credit, French barème + abattement). It also asserts that the countries whose law changed between 2025 and 2026 actually differ. Details: `scripts/verify-taxes.ts`.
+
+### What the engine models
+
+| Mechanism | Where it applies |
+|---|---|
+| Progressive brackets on a country-specific base | all 27 |
+| Contribution ceilings (health / pension split) | DE, AT, NL, CY, EE, LV, LT, PL, RO, SE, BG, HR, SI, IE, DK… |
+| Base = gross − employee contributions | BE, DK, FR, IT, LT, LU, SI, SK, BG, HR |
+| Base = gross − deducted contributions only | PL (ZUS deductible, 9 % health contribution not), FR (10 % abattement) |
+| Personal allowance in the base | DE, ES, EE, LV, LT, SE, DK, SI, HR, RO, SK, PT |
+| Allowance that tapers with income | SK, LT (NPD), RO (income cap) |
+| Tax credit at the lowest rate (not a base deduction) | BE (25 % of the tax-free sum), CZ, EE, IE |
+| Credit that phases out with income | GR (€777, −2 %) |
+| Credit that rises then phases out | NL (algemene heffingskorting + arbeidskorting, piecewise schedule) |
+| Progressive social charge | IE (USC) |
+| Marriage splitting | DE (Ehegattensplitting) |
+| Family parts | FR (quotient familial, €1,807 cap per half part) |
+| Flat bonus-payment tax | AT (6 % on 13th/14th salary) |
 
 ## Development
 
@@ -127,4 +148,6 @@ docs/screenshots/      # README images
 
 ## Limitations
 
-An estimation tool, not tax advice. Regional surcharges (Spanish autonomous regions, Italian regional/municipal add-ons, Belgian municipal tax), church tax and some personal deductions are not modelled. Estonia's basic exemption and Slovakia's 2026 top brackets are approximate. Confirm with your local tax authority before signing a contract.
+An estimation tool, not tax advice. Deliberately **not** modelled: the employee tax detrazione of Italy, the Spanish *reducción por rendimientos del trabajo*, the Dutch pension-premium split, regional and municipal surcharges that vary by locality (Spanish autonomous regions, Italian regional/municipal add-ons, Belgian municipal tax, Croatian local rates use the 20/30 default), church tax, property and wealth taxes, employer-side details, and individual deductions such as commuting, home office, church, union dues or private pension top-ups.
+
+Every other simplification is listed in `notesEn` on the country record — for example Germany's health/care ceiling vs pension ceiling, France's CSG split, or the Irish PRSI step from 4.2% to 4.35% in October 2026. Only 2025 and 2026 are modelled; earlier years are deliberately not offered rather than shown with the wrong tables. Confirm with your local tax authority before signing a contract.

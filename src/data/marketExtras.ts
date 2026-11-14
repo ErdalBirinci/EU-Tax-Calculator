@@ -1,6 +1,6 @@
 /** Market/SEO extras: employer cost, PPP, FX, visa thresholds, guides. Estimates 2025/2026. */
 
-export const TAX_RULES_VERSION = '2026.1';
+export const TAX_RULES_VERSION = '2026.2';
 
 /** Employer social charges as fraction of gross (approx, capped systems simplified). */
 export const EMPLOYER_RATES: Record<string, number> = {

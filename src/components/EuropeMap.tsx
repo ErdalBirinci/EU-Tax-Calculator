@@ -2,7 +2,7 @@ import React, { memo, useMemo, useState } from "react";
 import { geoMercator, geoPath } from "d3-geo";
 import { euCountries } from "../i18n/translations";
 import { cityCoordinates } from "../data/cityCoordinates";
-import { TAX_RULES_2025 } from "../data/taxRules";
+import { TAX_RULES_CURRENT } from "../data/taxRules";
 import europe from "../data/europe.json";
 
 interface EuropeMapProps {
@@ -22,7 +22,7 @@ const heatColor = (rate: number) => {
   return "#ef4444";
 };
 
-const topRate = (c: string) => TAX_RULES_2025[c]?.effectiveTopRate ?? 30;
+const topRate = (c: string) => TAX_RULES_CURRENT[c]?.effectiveTopRate ?? 30;
 
 const EuropeMap = ({ selectedCountry, selectedCity, onSelectCountry, showHeatmap }: EuropeMapProps) => {
   const [hovered, setHovered] = useState<string | null>(null);

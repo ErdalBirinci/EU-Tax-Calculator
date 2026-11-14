@@ -6,7 +6,7 @@ import { expatRegimes } from '../data/expatRegimes';
 import { countryCurrencies } from '../data/currencies';
 import { calculateTaxes, TaxResult, solveGrossFromNet, deterministicNet, applyRegime, employerCost, pppAdjustedNet, blueCardCheck, TAX_RULES_VERSION } from '../services/taxEngine';
 import { storageGet, storageSet, storageRemove } from '../services/storage';
-import { TAX_RULES_2025 } from '../data/taxRules';
+import { rulesFor, socialSecurityOf, SUPPORTED_TAX_YEARS, DEFAULT_TAX_YEAR } from '../data/taxRules';
 import { CountryCompare } from './CountryCompare';
 import { COUNTRY_GUIDES } from '../data/marketExtras';
 import { EXPAT_DETAIL, visaNote, pensionOf, BLUE_CARD_SHORTAGE } from '../data/socialExtras';
@@ -26,8 +26,8 @@ import { Share2, Copy } from 'lucide-react';
 export function TaxCalculator() {
   const { t, language } = useLanguage();
   
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
+  const currentYear = DEFAULT_TAX_YEAR;
+  const years = SUPPORTED_TAX_YEARS;
 
   const [country, setCountry] = useState('');
   const [taxYear, setTaxYear] = useState<number>(currentYear);
@@ -346,15 +346,15 @@ export function TaxCalculator() {
             </div>
             <EuropeMap selectedCountry={country} selectedCity={city} onSelectCountry={handleMapSelect} showHeatmap={showHeatmap} />
           </div>
-          {country && TAX_RULES_2025[country] && (() => {
-            const rule = TAX_RULES_2025[country];
-            const ex = deterministicNet(60000, country, 'single', 0);
+          {country && rulesFor(country, taxYear) && (() => {
+            const rule = rulesFor(country, taxYear)!;
+            const ex = deterministicNet(60000, country, 'single', 0, 12, taxYear);
             const top = rule.brackets[rule.brackets.length - 1];
             return (
               <div className="mt-3 p-4 rounded-2xl bg-ink-950 text-white flex flex-wrap items-center gap-x-5 gap-y-1.5 no-print">
                 <span className="text-sm font-black">{country}</span>
                 <span className="text-[11px] font-bold text-white/60">Top rate <span className="text-gold-400 font-black">{Math.round(top.rate * 100)}%</span></span>
-                <span className="text-[11px] font-bold text-white/60">Social <span className="text-gold-400 font-black">{(rule.socialRate * 100).toFixed(1)}%</span></span>
+                <span className="text-[11px] font-bold text-white/60">Social <span className="text-gold-400 font-black">{((socialSecurityOf(country, 60000, taxYear) / 60000) * 100).toFixed(1)}%</span></span>
                 <span className="text-[11px] font-bold text-white/60">€60k → net <span className="text-emerald-400 font-black num-tabular">{ex.net.toLocaleString()} {rule.currency}</span></span>
                 <button onClick={() => applyPreset({ country, grossSalary: 60000 })} className="ml-auto text-[11px] font-extrabold text-gold-400 hover:text-gold-300">Calculate €60k →</button>
               </div>

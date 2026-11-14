@@ -1,6 +1,6 @@
 import React from 'react';
 import { COUNTRY_GUIDES } from '../data/marketExtras';
-import { TAX_RULES_2025 } from '../data/taxRules';
+import { TAX_RULES_CURRENT } from '../data/taxRules';
 import { taxAuthorities, defaultTaxAuthority } from '../data/taxAuthorities';
 import { countryCities } from '../data/cities';
 import { ArrowLeft, Globe, Building2 } from 'lucide-react';
@@ -37,7 +37,7 @@ export function GuidesGrid({ onOpen }: { onOpen: (country: string) => void }) {
 
 export function GuidePage({ country, onBack, onCalculate }: { country: string; onBack: () => void; onCalculate: (country: string) => void }) {
   const guide = COUNTRY_GUIDES[country];
-  const rule = TAX_RULES_2025[country];
+  const rule = TAX_RULES_CURRENT[country];
   const auth = taxAuthorities[country] ?? defaultTaxAuthority;
   if (!guide) return null;
   return (
